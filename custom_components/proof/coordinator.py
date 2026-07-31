@@ -38,7 +38,10 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         try:
             devices = await self.client.async_get_devices()
         except ProofAuthError as err:
+            # Recoverable only by a new SMS login, so ask the user for one.
             raise ConfigEntryAuthFailed(str(err)) from err
         except ProofConnectionError as err:
             raise UpdateFailed(str(err)) from err
+        if not devices:
+            raise UpdateFailed("Proof returned no devices for this account")
         return {dev["id"]: dev for dev in devices if "id" in dev}

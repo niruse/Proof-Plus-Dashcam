@@ -3,23 +3,31 @@
     "step": {
       "user": {
         "title": "Proof account",
-        "description": "Sign in with your Proof app account. Use the phone number you log in to the mobile app with.",
+        "description": "Sign in with your Proof app account. You must use the phone number you log in to the mobile app with — email addresses are not accepted. A verification code will be sent to that number by SMS.",
         "data": {
           "username": "Phone number",
           "password": "Password",
           "base_url": "API base URL"
         }
       },
+      "code": {
+        "title": "Verification code",
+        "description": "Enter the code that was just sent by SMS to {username}.",
+        "data": {
+          "code": "SMS code"
+        }
+      },
       "reauth_confirm": {
         "title": "Re-authenticate Proof",
-        "description": "The password for {username} is no longer valid. Enter the current password.",
+        "description": "The Proof session for {username} has expired. Confirm your password and a new SMS code will be sent.",
         "data": {
           "password": "Password"
         }
       }
     },
     "error": {
-      "invalid_auth": "Invalid phone number or password",
+      "invalid_code": "The code or password was rejected. Check the code and try again.",
+      "invalid_phone": "The Proof cloud does not recognise this phone number. Use the number you sign in to the mobile app with.",
       "cannot_connect": "Failed to connect to the Proof cloud",
       "unknown": "Unexpected error"
     },
