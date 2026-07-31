@@ -21,14 +21,12 @@ from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
-    DEFAULT_BASE_URL,
     ProofApiClient,
     ProofConnectionError,
     ProofInvalidCode,
     ProofInvalidPhone,
 )
 from .const import (
-    CONF_BASE_URL,
     CONF_CODE,
     CONF_REFRESH_TOKEN,
     DEFAULT_SCAN_INTERVAL,
@@ -42,7 +40,6 @@ STEP_USER_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
-        vol.Optional(CONF_BASE_URL, default=DEFAULT_BASE_URL): str,
     }
 )
 
@@ -64,7 +61,6 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
             async_get_clientsession(self.hass),
             data[CONF_USERNAME],
             data[CONF_PASSWORD],
-            data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
         )
 
     async def _async_request_code(

@@ -7,14 +7,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import DEFAULT_BASE_URL, ProofApiClient, ProofAuthError, ProofConnectionError
-from .const import (
-    CONF_BASE_URL,
-    CONF_REFRESH_TOKEN,
-    DEFAULT_SCAN_INTERVAL,
-    DOMAIN,
-    PLATFORMS,
-)
+from .api import ProofApiClient, ProofAuthError, ProofConnectionError
+from .const import CONF_REFRESH_TOKEN, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
 from .coordinator import ProofCoordinator
 
 
@@ -32,7 +26,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_get_clientsession(hass),
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
-        entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
         on_refresh_token=_store_refresh_token,
     )

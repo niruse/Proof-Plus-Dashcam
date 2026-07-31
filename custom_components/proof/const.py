@@ -3,7 +3,6 @@ from __future__ import annotations
 
 DOMAIN = "proof"
 
-CONF_BASE_URL = "base_url"
 CONF_CODE = "code"
 CONF_REFRESH_TOKEN = "refresh_token"
 

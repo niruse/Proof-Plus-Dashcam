@@ -6,8 +6,7 @@
         "description": "Sign in with your Proof app account. You must use the phone number you log in to the mobile app with — email addresses are not accepted. A verification code will be sent to that number by SMS.",
         "data": {
           "username": "Phone number",
-          "password": "Password",
-          "base_url": "API base URL"
+          "password": "Password"
         }
       },
       "code": {
