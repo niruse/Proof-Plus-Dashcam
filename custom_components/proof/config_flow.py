@@ -24,6 +24,7 @@ from .api import (
     ProofApiClient,
     ProofConnectionError,
     ProofInvalidCode,
+    ProofInvalidCredentials,
     ProofInvalidPhone,
 )
 from .const import (
@@ -42,6 +43,8 @@ STEP_USER_SCHEMA = vol.Schema(
         vol.Required(CONF_PASSWORD): str,
     }
 )
+
+REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
 
 STEP_CODE_SCHEMA = vol.Schema({vol.Required(CONF_CODE): str})
 
@@ -63,9 +66,24 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
             data[CONF_PASSWORD],
         )
 
-    async def _async_request_code(
-        self, data: dict[str, Any], step_id: str
+    def _show_credentials_form(
+        self, errors: dict[str, str] | None = None
     ) -> ConfigFlowResult:
+        """Show the step that collects the password: setup or re-authentication."""
+        if self._reauth_entry is not None:
+            return self.async_show_form(
+                step_id="reauth_confirm",
+                data_schema=REAUTH_SCHEMA,
+                description_placeholders={
+                    CONF_USERNAME: self._reauth_entry.data[CONF_USERNAME]
+                },
+                errors=errors or {},
+            )
+        return self.async_show_form(
+            step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors or {}
+        )
+
+    async def _async_request_code(self, data: dict[str, Any]) -> ConfigFlowResult:
         """Ask the cloud to send an SMS code, then show the code form."""
         errors: dict[str, str] = {}
         client = self._make_client(data)
@@ -80,10 +98,7 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown"
 
         if errors:
-            schema = STEP_USER_SCHEMA if step_id == "user" else STEP_CODE_SCHEMA
-            return self.async_show_form(
-                step_id=step_id, data_schema=schema, errors=errors
-            )
+            return self._show_credentials_form(errors)
 
         self._data = dict(data)
         self._client = client
@@ -98,8 +113,8 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Collect the phone number and password, then send an SMS code."""
         if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA)
-        return await self._async_request_code(user_input, "user")
+            return self._show_credentials_form()
+        return await self._async_request_code(user_input)
 
     async def async_step_code(
         self, user_input: dict[str, Any] | None = None
@@ -112,8 +127,14 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         try:
             await self._client.async_login_with_code(user_input[CONF_CODE].strip())
-        except ProofInvalidCode:
+        except ProofInvalidCode as err:
+            _LOGGER.warning("Proof rejected the verification code: %s", err)
             errors["base"] = "invalid_code"
+        except ProofInvalidCredentials as err:
+            # Not the code at all — the password is wrong, so go back a step
+            # where it can actually be corrected.
+            _LOGGER.warning("Proof rejected the password: %s", err)
+            return self._show_credentials_form({"base": "invalid_auth"})
         except ProofConnectionError:
             errors["base"] = "cannot_connect"
         except Exception:  # noqa: BLE001
@@ -152,15 +173,9 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
         """Confirm the password, then send a new SMS code."""
         assert self._reauth_entry is not None
         if user_input is None:
-            return self.async_show_form(
-                step_id="reauth_confirm",
-                data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
-                description_placeholders={
-                    CONF_USERNAME: self._reauth_entry.data[CONF_USERNAME]
-                },
-            )
+            return self._show_credentials_form()
         data = {**self._reauth_entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]}
-        return await self._async_request_code(data, "reauth_confirm")
+        return await self._async_request_code(data)
 
     @staticmethod
     @callback

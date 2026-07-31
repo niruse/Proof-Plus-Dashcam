@@ -9,11 +9,14 @@ the v5 endpoints reject.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Callable
 from typing import Any
 
 import aiohttp
+
+_LOGGER = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://app-p106.2proof.co.il"
 
@@ -43,6 +46,10 @@ class ProofAuthError(ProofError):
 
 class ProofInvalidCode(ProofError):
     """The SMS verification code was rejected."""
+
+
+class ProofInvalidCredentials(ProofError):
+    """The phone number or password was rejected."""
 
 
 class ProofInvalidPhone(ProofError):
@@ -118,6 +125,9 @@ class ProofApiClient:
             raise ProofConnectionError(f"Error connecting to Proof cloud: {err}") from err
 
         if "access_token" not in payload:
+            _LOGGER.debug(
+                "Token request (%s) failed: %s", data.get("grant_type"), payload
+            )
             raise ProofAuthError(
                 payload.get("error_description") or payload.get("error") or str(payload)
             )
@@ -143,8 +153,11 @@ class ProofApiClient:
                 }
             )
         except ProofAuthError as err:
-            # The cloud reports a wrong code and a wrong password identically.
-            raise ProofInvalidCode(str(err)) from err
+            # "code mismatch" means the code is wrong or has been superseded by a
+            # newer one; "Bad credentials" means the password is wrong.
+            if "code" in str(err).lower():
+                raise ProofInvalidCode(str(err)) from err
+            raise ProofInvalidCredentials(str(err)) from err
 
     async def async_refresh(self) -> dict[str, Any]:
         """Renew the access token using the stored refresh token."""

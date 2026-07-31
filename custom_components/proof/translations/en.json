@@ -25,7 +25,8 @@
       }
     },
     "error": {
-      "invalid_code": "The code or password was rejected. Check the code and try again.",
+      "invalid_code": "That verification code was rejected. Note that only the newest code is valid — if you requested more than one, use the most recent SMS, or start again to get a new code.",
+      "invalid_auth": "The password was rejected by the Proof cloud. Check it and a new code will be sent.",
       "invalid_phone": "The Proof cloud does not recognise this phone number. Use the number you sign in to the mobile app with.",
       "cannot_connect": "Failed to connect to the Proof cloud",
       "unknown": "Unexpected error"
