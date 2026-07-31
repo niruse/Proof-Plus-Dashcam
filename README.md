@@ -80,12 +80,6 @@ the integration's **Configure** options.
 - Devices added to your Proof account after setup appear after a Home Assistant restart
   (or by reloading the integration).
 
-## Credits
-
-Inspired by [dimagoltsman/ha-proof-dashcam-integration](https://github.com/dimagoltsman/ha-proof-dashcam-integration),
-which targeted the older Proof API. This integration was built by analyzing the current
-Proof mobile app traffic (API v5).
-
 ### Notes for further work
 
 The following are established from traffic captures of the mobile app and may help finish this:
@@ -103,3 +97,9 @@ The following are established from traffic captures of the mobile app and may he
   collisions; the files themselves are then plain unsigned GETs from `fs-p106.2proof.co.il`).
 - The cloud appears to keep **one active token per account**, so a new login elsewhere can
   invalidate the session this integration holds.
+
+## Credits
+
+Inspired by [dimagoltsman/ha-proof-dashcam-integration](https://github.com/dimagoltsman/ha-proof-dashcam-integration),
+which targeted the older Proof API. This integration was built by analyzing the current
+Proof mobile app traffic (API v5).
