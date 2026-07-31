@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Proof account",
+        "description": "Sign in with your Proof app account. Use the phone number you log in to the mobile app with.",
+        "data": {
+          "username": "Phone number",
+          "password": "Password",
+          "base_url": "API base URL"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Proof",
+        "description": "The password for {username} is no longer valid. Enter the current password.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid phone number or password",
+      "cannot_connect": "Failed to connect to the Proof cloud",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This Proof account is already configured",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Proof options",
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "speed": { "name": "Speed" },
+      "altitude": { "name": "Altitude" },
+      "heading": { "name": "Heading" },
+      "temperature": { "name": "Device temperature" },
+      "signal_strength": { "name": "GSM signal" },
+      "total_distance": { "name": "Total distance" },
+      "last_seen": { "name": "Last seen" }
+    },
+    "binary_sensor": {
+      "online": { "name": "Online" },
+      "ignition": { "name": "Ignition" }
+    }
+  }
+}
