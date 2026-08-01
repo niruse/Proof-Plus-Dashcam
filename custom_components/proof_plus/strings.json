@@ -76,7 +76,9 @@
       "live_rear": { "name": "Rear camera" }
     },
     "image": {
-      "last_event": { "name": "Last event" }
+      "last_event": { "name": "Last event" },
+      "last_event_front": { "name": "Last event front" },
+      "last_event_rear": { "name": "Last event rear" }
     },
     "button": {
       "locate": { "name": "Update location" },

@@ -19,28 +19,51 @@ from .coordinator import ProofCoordinator
 from .entity import ProofEntity
 
 
+def _camera_count(device: dict[str, Any]) -> int:
+    """Return how many cameras the dashcam exposes."""
+    caps = (device.get("stats") or {}).get("caps") or {}
+    return 2 if caps.get("bcamera") else 1
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up a latest-snapshot image per device."""
+    """Set up a latest-snapshot image for each camera on each device."""
     coordinator: ProofCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
-        ProofSnapshotImage(hass, coordinator, device_id)
-        for device_id in coordinator.data
+        ProofSnapshotImage(hass, coordinator, device_id, index, count)
+        for device_id, device in coordinator.data.items()
+        for count in (_camera_count(device),)
+        for index in range(count)
     )
 
 
-class ProofSnapshotImage(ProofEntity, ImageEntity):
-    """The most recent event snapshot for one dashcam."""
+_EVENT_KEYS = {0: "last_event_front", 1: "last_event_rear"}
 
-    _attr_translation_key = "last_event"
+
+class ProofSnapshotImage(ProofEntity, ImageEntity):
+    """The most recent event snapshot from one camera of a dashcam."""
 
     def __init__(
-        self, hass: HomeAssistant, coordinator: ProofCoordinator, device_id: str
+        self,
+        hass: HomeAssistant,
+        coordinator: ProofCoordinator,
+        device_id: str,
+        cam_index: int = 0,
+        cam_count: int = 1,
     ) -> None:
         ProofEntity.__init__(self, coordinator, device_id)
         ImageEntity.__init__(self, hass)
-        self._attr_unique_id = f"{device_id}_last_event"
+        self._cam_index = cam_index
+        # A single-camera dashcam keeps the plain "Last event" name.
+        self._attr_translation_key = (
+            _EVENT_KEYS.get(cam_index, "last_event") if cam_count > 1 else "last_event"
+        )
+        self._attr_unique_id = (
+            f"{device_id}_last_event"
+            if cam_index == 0
+            else f"{device_id}_last_event_{cam_index}"
+        )
         self._fid: str | None = None
         self._loc: list[float] | None = None
         self._update_from_events()
@@ -48,11 +71,20 @@ class ProofSnapshotImage(ProofEntity, ImageEntity):
     def _update_from_events(self) -> bool:
         """Point the entity at the newest image event; return True if it changed.
 
-        Each event yields both a video clip and image snapshots, so filter to
-        the images — otherwise the entity would serve an MP4 as a JPEG.
+        Every event produces a video clip and an image for each camera, so
+        filter on both: images only (otherwise an MP4 would be served as a
+        JPEG) and this entity's camera.
         """
         events = self.coordinator.latest_events.get(self._device_id) or []
-        newest = next((e for e in events if e.get("ftype") == "image"), None)
+        newest = next(
+            (
+                e
+                for e in events
+                if e.get("ftype") == "image"
+                and (e.get("camid") or 0) == self._cam_index
+            ),
+            None,
+        )
         if newest is None:
             return False
         fid = newest.get("fid")
