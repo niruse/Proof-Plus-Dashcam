@@ -47,7 +47,7 @@ unless you turn it on:
 
 ### Manual
 
-Copy `custom_components/proof` into your Home Assistant `config/custom_components/` folder and
+Copy `custom_components/proof_plus` into your Home Assistant `config/custom_components/` folder and
 restart Home Assistant.
 
 ## Configuration
@@ -72,8 +72,10 @@ you are actually watching and is closed a few seconds after you stop.
 
 The camera streams over **WebRTC** (this hardware does not support the RTMP path): the integration
 opens the imclient WebSocket, sends an SDP offer to the device, exchanges ICE candidates and connects
-through the Proof TURN relay, then decodes the H.264 track and serves it to Home Assistant as MJPEG.
-It works while the car is parked. Requires the `aiortc` package (installed automatically).
+through the Proof TURN relay, then bridges the media straight to the Home Assistant frontend as native WebRTC.
+It works while the car is parked, **including audio** — the device's H.264 video and Opus audio are
+forwarded to the browser untouched (no transcoding). Requires the `aiortc` package (installed
+automatically).
 
 ## Notes
 

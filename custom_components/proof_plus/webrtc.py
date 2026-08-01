@@ -27,6 +27,7 @@ from aiortc import (
     RTCPeerConnection,
     RTCSessionDescription,
 )
+from aiortc.contrib.media import MediaRelay
 from aiortc.sdp import candidate_from_sdp
 from av import VideoFrame
 
@@ -62,11 +63,27 @@ class ProofWebRTCClient:
         self._latest_frame: VideoFrame | None = None
         self._connected = asyncio.Event()
         self._closed = False
+        # Lets the browser bridge and the snapshot grabber consume the same
+        # device tracks without opening a second session to the dashcam.
+        self._relay = MediaRelay()
+        self._video_track: Any = None
+        self._audio_track: Any = None
 
     @property
     def latest_frame(self) -> VideoFrame | None:
         """Return the most recently decoded video frame."""
         return self._latest_frame
+
+    @property
+    def has_media(self) -> bool:
+        """Whether the device has produced any media track yet."""
+        return self._video_track is not None
+
+    def subscribe(self) -> tuple[Any, Any]:
+        """Return relayed (video, audio) tracks for one consumer."""
+        video = self._relay.subscribe(self._video_track) if self._video_track else None
+        audio = self._relay.subscribe(self._audio_track) if self._audio_track else None
+        return video, audio
 
     async def async_start(self) -> None:
         """Open the session and block until the first frame arrives (or fail)."""
@@ -86,7 +103,14 @@ class ProofWebRTCClient:
         @self._pc.on("track")
         def _on_track(track: Any) -> None:
             if track.kind == "video":
-                self._tasks.append(asyncio.ensure_future(self._consume(track)))
+                self._video_track = track
+                # Consume through the relay so browser consumers can subscribe
+                # to the same track independently.
+                self._tasks.append(
+                    asyncio.ensure_future(self._consume(self._relay.subscribe(track)))
+                )
+            elif track.kind == "audio":
+                self._audio_track = track
 
         self._pc.addTransceiver("video", direction="recvonly")
         self._pc.addTransceiver("audio", direction="recvonly")
