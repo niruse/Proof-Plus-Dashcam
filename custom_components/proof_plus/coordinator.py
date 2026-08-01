@@ -42,6 +42,8 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         ) or entry.options.get(CONF_ENABLE_MEDIA_BROWSER)
         # Newest-first event metadata per device (no image bytes).
         self.latest_events: dict[str, list[dict[str, Any]]] = {}
+        # One shared live session per dashcam (see camera.DeviceLiveSession).
+        self._live_sessions: dict[str, Any] = {}
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         super().__init__(
             hass,
@@ -50,6 +52,14 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             config_entry=entry,
             update_interval=timedelta(seconds=scan_interval),
         )
+
+    def live_session(self, hass: HomeAssistant, device_id: str) -> Any:
+        """Return the shared live session for a dashcam, creating it on first use."""
+        if device_id not in self._live_sessions:
+            from .camera import DeviceLiveSession
+
+            self._live_sessions[device_id] = DeviceLiveSession(hass, self, device_id)
+        return self._live_sessions[device_id]
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:

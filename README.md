@@ -77,6 +77,14 @@ It works while the car is parked, **including audio** — the device's H.264 vid
 forwarded to the browser untouched (no transcoding). Requires the `aiortc` package (installed
 automatically).
 
+Dashcams with a second camera get **Front camera** and **Rear camera** entities. The device can only
+stream one camera at a time over a single session, so both entities share one connection and the
+integration switches the device between them; opening the rear camera therefore changes what the
+front camera shows until you switch back.
+
+The **keep-alive** option controls how long the stream stays up after you stop watching (0 keeps it
+running until closed, which uses cellular data continuously).
+
 ## Notes
 
 - Cloud polling only; nothing is sent to third parties besides the official Proof cloud.

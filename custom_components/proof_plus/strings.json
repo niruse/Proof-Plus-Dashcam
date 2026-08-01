@@ -71,7 +71,9 @@
       "ignition": { "name": "Ignition" }
     },
     "camera": {
-      "live": { "name": "Live view" }
+      "live": { "name": "Live view" },
+      "live_front": { "name": "Front camera" },
+      "live_rear": { "name": "Rear camera" }
     },
     "image": {
       "last_event": { "name": "Last event" }

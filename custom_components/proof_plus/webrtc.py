@@ -11,6 +11,10 @@ Signalling quirks that matter (learned the hard way):
   * The device sends its candidates in a FLAT payload
     ({type:candidate, candidate:"<str>", sdpMid, sdpMLineIndex}) whereas the app
     sends them NESTED (candidate:{...}); both shapes must be handled.
+  * The device only understands the legacy data-channel dialect
+    (``m=application <p> DTLS/SCTP 5000`` + ``a=sctpmap:``). Offering aiortc's
+    modern ``UDP/DTLS/SCTP webrtc-datachannel`` form makes it drop the whole
+    offer, so the SDP is rewritten before it is sent.
 """
 from __future__ import annotations
 
@@ -40,6 +44,21 @@ MSG_SIGNAL = 6
 
 HEARTBEAT_INTERVAL = 5
 CONNECT_TIMEOUT = 30
+DATA_CHANNEL_TIMEOUT = 15
+
+
+def _to_legacy_sctp(sdp: str) -> str:
+    """Rewrite the data-channel media section into the device's dialect."""
+    lines = []
+    for line in sdp.splitlines():
+        if line.startswith("m=application") and "webrtc-datachannel" in line:
+            port = line.split()[1]
+            lines.append(f"m=application {port} DTLS/SCTP 5000")
+        elif line.startswith("a=sctp-port:"):
+            lines.append("a=sctpmap:5000 webrtc-datachannel 1024")
+        else:
+            lines.append(line)
+    return "\r\n".join(lines) + "\r\n"
 
 
 class ProofWebRTCClient:
@@ -68,6 +87,9 @@ class ProofWebRTCClient:
         self._relay = MediaRelay()
         self._video_track: Any = None
         self._audio_track: Any = None
+        self._data_channel: Any = None
+        self._data_channel_open = asyncio.Event()
+        self._rpc_id = 0
 
     @property
     def latest_frame(self) -> VideoFrame | None:
@@ -112,9 +134,19 @@ class ProofWebRTCClient:
             elif track.kind == "audio":
                 self._audio_track = track
 
+        # Control channel for device RPCs such as switching camera.
+        self._data_channel = self._pc.createDataChannel("proof")
+
+        @self._data_channel.on("open")
+        def _on_dc_open() -> None:
+            self._data_channel_open.set()
+
         self._pc.addTransceiver("video", direction="recvonly")
         self._pc.addTransceiver("audio", direction="recvonly")
-        await self._pc.setLocalDescription(await self._pc.createOffer())
+        offer = await self._pc.createOffer()
+        await self._pc.setLocalDescription(
+            RTCSessionDescription(sdp=_to_legacy_sctp(offer.sdp), type=offer.type)
+        )
         await self._await_ice_gathering()
 
         ws_url = f"ws://{im_ip}:{ws_port}/imclient?access_token={token}"
@@ -133,6 +165,45 @@ class ProofWebRTCClient:
         except asyncio.TimeoutError as err:
             await self.async_stop()
             raise TimeoutError("Timed out establishing the live video stream") from err
+
+        if self._camera_index:
+            await self.async_select_camera(self._camera_index)
+
+    async def async_select_camera(self, index: int, current: int = 0) -> None:
+        """Switch the device to the given camera (0 = front)."""
+        if index == current:
+            return
+        try:
+            await asyncio.wait_for(
+                self._data_channel_open.wait(), timeout=DATA_CHANNEL_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "Control channel unavailable for %s; staying on the current camera",
+                self._device_id,
+            )
+            return
+        # switchCamera cycles through the device's cameras rather than taking an
+        # index, so step from where we are to where we want to be.
+        for _ in range((index - current) % 2 or 1):
+            self._rpc("switchCamera")
+            await asyncio.sleep(1)
+
+    def _rpc(self, name: str, params: Any = None) -> None:
+        """Send an RPC to the device over the control channel."""
+        if self._data_channel is None or self._data_channel.readyState != "open":
+            return
+        self._rpc_id += 1
+        self._data_channel.send(
+            json.dumps(
+                {
+                    "type": "rpc_req",
+                    "name": name,
+                    "msgid": self._rpc_id,
+                    "params": params,
+                }
+            )
+        )
 
     async def async_stop(self) -> None:
         """Tear the session down."""

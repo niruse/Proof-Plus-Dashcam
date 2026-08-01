@@ -39,22 +39,88 @@ _LOGGER = logging.getLogger(__name__)
 FRAME_WAIT_TIMEOUT = 15
 
 
+def _camera_count(device: dict[str, Any]) -> int:
+    """Return how many cameras the dashcam exposes."""
+    caps = (device.get("stats") or {}).get("caps") or {}
+    return 2 if caps.get("bcamera") else 1
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up a live camera per device."""
+    """Set up a live camera for each camera on each device."""
     coordinator: ProofCoordinator = hass.data[DOMAIN][entry.entry_id]
     keepalive = entry.options.get(CONF_LIVE_KEEPALIVE, DEFAULT_LIVE_KEEPALIVE)
     async_add_entities(
-        ProofCamera(hass, coordinator, device_id, keepalive)
-        for device_id in coordinator.data
+        ProofCamera(hass, coordinator, device_id, keepalive, index, count)
+        for device_id, device in coordinator.data.items()
+        for count in (_camera_count(device),)
+        for index in range(count)
     )
 
 
-class ProofCamera(ProofEntity, Camera):
-    """Live WebRTC view of a Proof dashcam, with audio."""
+_CAMERA_KEYS = {0: "live_front", 1: "live_rear"}
 
-    _attr_translation_key = "live"
+
+class DeviceLiveSession:
+    """One live session per dashcam.
+
+    The device streams a single camera at a time over one WebRTC session and
+    refuses a second one, so the front and rear entities share this session and
+    ask it to switch camera as needed.
+    """
+
+    def __init__(
+        self, hass: HomeAssistant, coordinator: ProofCoordinator, device_id: str
+    ) -> None:
+        self._hass = hass
+        self._coordinator = coordinator
+        self._device_id = device_id
+        self._client: ProofWebRTCClient | None = None
+        self._current_camera = 0
+        self._lock = asyncio.Lock()
+
+    @property
+    def client(self) -> ProofWebRTCClient | None:
+        """The running client, if any."""
+        return self._client
+
+    async def async_acquire(self, cam_index: int) -> ProofWebRTCClient | None:
+        """Return a client streaming the requested camera, starting it if needed."""
+        async with self._lock:
+            if self._client is None:
+                client = ProofWebRTCClient(
+                    async_get_clientsession(self._hass),
+                    self._coordinator.client,
+                    self._device_id,
+                    camera_index=cam_index,
+                )
+                try:
+                    await client.async_start()
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "Could not start live view for %s: %s", self._device_id, err
+                    )
+                    await client.async_stop()
+                    return None
+                self._client = client
+                self._current_camera = cam_index
+            elif cam_index != self._current_camera:
+                await self._client.async_select_camera(cam_index, self._current_camera)
+                self._current_camera = cam_index
+            return self._client
+
+    async def async_stop(self) -> None:
+        """Close the session to the dashcam."""
+        async with self._lock:
+            if self._client is not None:
+                await self._client.async_stop()
+                self._client = None
+
+
+class ProofCamera(ProofEntity, Camera):
+    """Live WebRTC view of one camera on a Proof dashcam, with audio."""
+
     _attr_supported_features = CameraEntityFeature.STREAM
 
     def __init__(
@@ -63,40 +129,31 @@ class ProofCamera(ProofEntity, Camera):
         coordinator: ProofCoordinator,
         device_id: str,
         keepalive: int,
+        cam_index: int = 0,
+        cam_count: int = 1,
     ) -> None:
         ProofEntity.__init__(self, coordinator, device_id)
         Camera.__init__(self)
         self.hass = hass
         self._keepalive = keepalive
-        self._attr_unique_id = f"{device_id}_live"
-        self._client: ProofWebRTCClient | None = None
-        self._lock = asyncio.Lock()
+        self._cam_index = cam_index
+        # A single-camera dashcam keeps the plain "Live view" name.
+        self._attr_translation_key = (
+            _CAMERA_KEYS.get(cam_index, "live") if cam_count > 1 else "live"
+        )
+        self._attr_unique_id = (
+            f"{device_id}_live" if cam_index == 0 else f"{device_id}_live_{cam_index}"
+        )
         self._idle_handle: asyncio.TimerHandle | None = None
         # Browser peer connections, keyed by Home Assistant's session id.
         self._sessions: dict[str, Any] = {}
+        self._session = coordinator.live_session(hass, device_id)
 
     # --- device session lifecycle ------------------------------------------
 
     async def _async_ensure_client(self) -> ProofWebRTCClient | None:
-        """Open the session to the dashcam if it is not already running."""
-        async with self._lock:
-            if self._client is not None:
-                return self._client
-            client = ProofWebRTCClient(
-                async_get_clientsession(self.hass),
-                self.coordinator.client,
-                self._device_id,
-            )
-            try:
-                await client.async_start()
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.warning(
-                    "Could not start live view for %s: %s", self._device_id, err
-                )
-                await client.async_stop()
-                return None
-            self._client = client
-            return client
+        """Get the shared device session, streaming this entity's camera."""
+        return await self._session.async_acquire(self._cam_index)
 
     def _reset_idle_timer(self) -> None:
         if self._idle_handle is not None:
@@ -111,12 +168,10 @@ class ProofCamera(ProofEntity, Camera):
         )
 
     async def _async_teardown(self) -> None:
-        async with self._lock:
-            if self._sessions:
-                return
-            if self._client is not None:
-                await self._client.async_stop()
-                self._client = None
+        """Close the shared device session once nobody is watching it."""
+        if self._sessions:
+            return
+        await self._session.async_stop()
 
     # --- still images -------------------------------------------------------
 
@@ -216,10 +271,7 @@ class ProofCamera(ProofEntity, Camera):
             self._idle_handle.cancel()
         for session_id in list(self._sessions):
             await self._async_close_session(session_id)
-        async with self._lock:
-            if self._client is not None:
-                await self._client.async_stop()
-                self._client = None
+        await self._session.async_stop()
 
 
 def _frame_to_jpeg(frame: Any) -> bytes:
