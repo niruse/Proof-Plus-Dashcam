@@ -44,6 +44,9 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.latest_events: dict[str, list[dict[str, Any]]] = {}
         # One shared live session per dashcam (see camera.DeviceLiveSession).
         self._live_sessions: dict[str, Any] = {}
+        # Last known device settings per dashcam, read on demand over the
+        # control channel (reading them requires connecting to the device).
+        self.device_props: dict[str, dict[str, Any]] = {}
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         super().__init__(
             hass,
@@ -52,6 +55,36 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             config_entry=entry,
             update_interval=timedelta(seconds=scan_interval),
         )
+
+    async def async_get_device_props(
+        self, hass: HomeAssistant, device_id: str
+    ) -> dict[str, Any] | None:
+        """Read the dashcam's own settings (needs a session to the device)."""
+        client = await self.live_session(hass, device_id).async_acquire(0)
+        if client is None:
+            return None
+        props = await client.async_get_props()
+        if props is not None:
+            self.device_props[device_id] = props
+            self.async_update_listeners()
+        return props
+
+    async def async_set_device_props(
+        self, hass: HomeAssistant, device_id: str, props: dict[str, Any]
+    ) -> bool:
+        """Change dashcam settings, then refresh the cached values."""
+        client = await self.live_session(hass, device_id).async_acquire(0)
+        if client is None:
+            return False
+        if not await client.async_set_props(props):
+            return False
+        # Reflect the change immediately, then confirm from the device.
+        self.device_props.setdefault(device_id, {}).update(props)
+        self.async_update_listeners()
+        if (fresh := await client.async_get_props()) is not None:
+            self.device_props[device_id] = fresh
+            self.async_update_listeners()
+        return True
 
     def live_session(self, hass: HomeAssistant, device_id: str) -> Any:
         """Return the shared live session for a dashcam, creating it on first use."""

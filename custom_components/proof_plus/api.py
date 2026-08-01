@@ -299,6 +299,13 @@ class ProofApiClient:
             servers.append(entry)
         return servers
 
+    async def async_wake_device(self, device_id: str) -> bool:
+        """Ask the cloud to wake the dashcam so it reports a fresh position."""
+        payload = await self._async_request(
+            "POST", "/api/app/v5/user/wakeupdev", json={"dids": [device_id]}
+        )
+        return bool(payload.get("success", True))
+
     async def async_get_files(
         self,
         device_id: str,

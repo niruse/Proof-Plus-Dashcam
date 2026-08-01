@@ -90,6 +90,7 @@ class ProofWebRTCClient:
         self._data_channel: Any = None
         self._data_channel_open = asyncio.Event()
         self._rpc_id = 0
+        self._rpc_waiters: dict[str, asyncio.Future] = {}
 
     @property
     def latest_frame(self) -> VideoFrame | None:
@@ -141,6 +142,16 @@ class ProofWebRTCClient:
         def _on_dc_open() -> None:
             self._data_channel_open.set()
 
+        @self._data_channel.on("message")
+        def _on_dc_message(message: Any) -> None:
+            try:
+                reply = json.loads(message)
+            except (TypeError, ValueError):
+                return
+            waiter = self._rpc_waiters.pop(str(reply.get("msgid")), None)
+            if waiter is not None and not waiter.done():
+                waiter.set_result(reply)
+
         self._pc.addTransceiver("video", direction="recvonly")
         self._pc.addTransceiver("audio", direction="recvonly")
         offer = await self._pc.createOffer()
@@ -189,21 +200,54 @@ class ProofWebRTCClient:
             self._rpc("switchCamera")
             await asyncio.sleep(1)
 
-    def _rpc(self, name: str, params: Any = None) -> None:
+    def _rpc(self, name: str, params: Any = None) -> str | None:
         """Send an RPC to the device over the control channel."""
         if self._data_channel is None or self._data_channel.readyState != "open":
-            return
+            return None
         self._rpc_id += 1
+        msgid = str(self._rpc_id)
         self._data_channel.send(
             json.dumps(
-                {
-                    "type": "rpc_req",
-                    "name": name,
-                    "msgid": self._rpc_id,
-                    "params": params,
-                }
+                {"type": "rpc_req", "name": name, "msgid": msgid, "params": params}
             )
         )
+        return msgid
+
+    async def async_rpc(
+        self, name: str, params: Any = None, timeout: float = 10
+    ) -> dict[str, Any] | None:
+        """Send an RPC and wait for the device's reply."""
+        try:
+            await asyncio.wait_for(
+                self._data_channel_open.wait(), timeout=DATA_CHANNEL_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Control channel unavailable for %s", self._device_id)
+            return None
+        loop = asyncio.get_running_loop()
+        waiter: asyncio.Future = loop.create_future()
+        msgid = self._rpc(name, params)
+        if msgid is None:
+            return None
+        self._rpc_waiters[msgid] = waiter
+        try:
+            return await asyncio.wait_for(waiter, timeout=timeout)
+        except asyncio.TimeoutError:
+            self._rpc_waiters.pop(msgid, None)
+            _LOGGER.warning("No reply to %s from %s", name, self._device_id)
+            return None
+
+    async def async_get_props(self) -> dict[str, Any] | None:
+        """Read the dashcam's settings."""
+        reply = await self.async_rpc("getProps", {})
+        if reply is None or reply.get("ret") != 0:
+            return None
+        return reply.get("data")
+
+    async def async_set_props(self, props: dict[str, Any]) -> bool:
+        """Write one or more dashcam settings."""
+        reply = await self.async_rpc("setProps", props)
+        return bool(reply and reply.get("ret") == 0)
 
     async def async_stop(self) -> None:
         """Tear the session down."""

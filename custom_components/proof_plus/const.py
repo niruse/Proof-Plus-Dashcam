@@ -21,6 +21,14 @@ MIN_SCAN_INTERVAL = 10
 DEFAULT_LIVE_KEEPALIVE = 10
 
 # Always-on platforms; image/camera are added only when their option is enabled.
-PLATFORMS = ["binary_sensor", "device_tracker", "sensor"]
+PLATFORMS = [
+    "binary_sensor",
+    "button",
+    "device_tracker",
+    "number",
+    "select",
+    "sensor",
+    "switch",
+]
 
 ATTRIBUTION = "Data provided by 2proof.co.il"

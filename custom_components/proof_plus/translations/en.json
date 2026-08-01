@@ -77,6 +77,52 @@
     },
     "image": {
       "last_event": { "name": "Last event" }
+    },
+    "button": {
+      "locate": { "name": "Update location" },
+      "refresh_settings": { "name": "Refresh settings" }
+    },
+    "switch": {
+      "record_voice": { "name": "Record voice" },
+      "voice_messages": { "name": "Voice messages" },
+      "motion_detection": { "name": "Motion detection" },
+      "timelapse_parking": { "name": "Time-lapse parking recording" },
+      "rear_camera": { "name": "Rear camera enabled" },
+      "wifi": { "name": "Wi-Fi" }
+    },
+    "number": {
+      "volume": { "name": "Speaker volume" }
+    },
+    "select": {
+      "motion_level": {
+        "name": "Motion sensitivity",
+        "state": { "more": "More sensitive", "normal": "Normal", "less": "Less sensitive" }
+      },
+      "accident_level": {
+        "name": "Accident sensitivity",
+        "state": {
+          "off": "Off",
+          "most": "Most sensitive",
+          "more": "More sensitive",
+          "normal": "Normal",
+          "less": "Less sensitive",
+          "least": "Least sensitive"
+        }
+      },
+      "idle_timing": {
+        "name": "Car idle timing",
+        "state": {
+          "off": "Off",
+          "20": "20 minutes",
+          "30": "30 minutes",
+          "40": "40 minutes",
+          "60": "60 minutes"
+        }
+      },
+      "recording_duration": {
+        "name": "Time-lapse recording duration",
+        "state": { "1": "1 hour", "2": "2 hours", "4": "4 hours", "8": "8 hours" }
+      }
     }
   }
 }
