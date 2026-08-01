@@ -108,6 +108,8 @@ class ProofApiClient:
         self._token_expires_at: float = 0.0
         self._token_lock = asyncio.Lock()
         self.uid: str | None = None
+        self._im_ip: str | None = None
+        self._ws_port: int | None = None
 
     @property
     def refresh_token(self) -> str | None:
@@ -165,6 +167,8 @@ class ProofApiClient:
         self._access_token = payload["access_token"]
         self._token_expires_at = time.monotonic() + float(payload.get("expires_in", 3600))
         self.uid = payload.get("uid")
+        self._im_ip = payload.get("im_ip", self._im_ip)
+        self._ws_port = payload.get("ws_port", self._ws_port)
         if (token := payload.get("refresh_token")) and token != self._refresh_token:
             self._refresh_token = token
             if self._on_refresh_token:
@@ -265,6 +269,35 @@ class ProofApiClient:
         """Return the account profile."""
         payload = await self._async_request("GET", "/api/app/v5/user/profile")
         return payload.get("data", {})
+
+    async def async_get_access_token(self) -> str:
+        """Return a currently-valid access token (refreshing if needed)."""
+        return await self._async_ensure_token()
+
+    async def async_get_im_endpoint(self) -> tuple[str, int]:
+        """Return the (host, port) of the imclient WebSocket for live video."""
+        await self._async_ensure_token()
+        return self._im_ip or "aws4.2proof.co.il", int(self._ws_port or 8282)
+
+    async def async_get_ice_servers(self) -> list[dict[str, Any]]:
+        """Return STUN/TURN servers for WebRTC, from the account's sysconfig."""
+        payload = await self._async_request(
+            "GET",
+            "/api/app/v5/user/sysconfig",
+            params={"appName": APP_NAME, "uid": self.uid or ""},
+        )
+        ice = payload.get("data", {}).get("iceinfo", {}).get("iceServers", [])
+        servers: list[dict[str, Any]] = []
+        for server in ice:
+            if not server.get("urls"):
+                continue
+            entry: dict[str, Any] = {"urls": server["urls"]}
+            if server.get("username"):
+                entry["username"] = server["username"]
+            if server.get("credential"):
+                entry["credential"] = server["credential"]
+            servers.append(entry)
+        return servers
 
     async def async_get_files(
         self,

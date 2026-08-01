@@ -1,7 +1,7 @@
 """Constants for the Proof Plus integration."""
 from __future__ import annotations
 
-DOMAIN = "proof"
+DOMAIN = "proof_plus"
 
 CONF_CODE = "code"
 CONF_REFRESH_TOKEN = "refresh_token"

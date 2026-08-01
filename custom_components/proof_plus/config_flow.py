@@ -29,6 +29,7 @@ from .api import (
 )
 from .const import (
     CONF_CODE,
+    CONF_ENABLE_LIVE,
     CONF_ENABLE_MEDIA_BROWSER,
     CONF_ENABLE_SNAPSHOT,
     CONF_REFRESH_TOKEN,
@@ -212,6 +213,10 @@ class ProofOptionsFlow(OptionsFlow):
                     vol.Required(
                         CONF_ENABLE_MEDIA_BROWSER,
                         default=options.get(CONF_ENABLE_MEDIA_BROWSER, False),
+                    ): bool,
+                    vol.Required(
+                        CONF_ENABLE_LIVE,
+                        default=options.get(CONF_ENABLE_LIVE, False),
                     ): bool,
                 }
             ),

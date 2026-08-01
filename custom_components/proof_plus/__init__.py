@@ -8,7 +8,13 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ProofApiClient, ProofAuthError, ProofConnectionError
-from .const import CONF_ENABLE_SNAPSHOT, CONF_REFRESH_TOKEN, DOMAIN, PLATFORMS
+from .const import (
+    CONF_ENABLE_LIVE,
+    CONF_ENABLE_SNAPSHOT,
+    CONF_REFRESH_TOKEN,
+    DOMAIN,
+    PLATFORMS,
+)
 from .coordinator import ProofCoordinator
 
 
@@ -17,7 +23,8 @@ def _platforms_for(entry: ConfigEntry) -> list[str]:
     platforms = list(PLATFORMS)
     if entry.options.get(CONF_ENABLE_SNAPSHOT):
         platforms.append(Platform.IMAGE)
-    # Live view (camera platform) is not implemented yet; see the README.
+    if entry.options.get(CONF_ENABLE_LIVE):
+        platforms.append(Platform.CAMERA)
     return platforms
 
 

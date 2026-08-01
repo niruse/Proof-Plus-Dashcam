@@ -1,5 +1,5 @@
 {
-  "domain": "proof",
+  "domain": "proof_plus",
   "name": "Proof Plus",
   "codeowners": ["@niruse"],
   "config_flow": true,
@@ -8,6 +8,6 @@
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/niruse/Proof-Plus/issues",
-  "requirements": [],
+  "requirements": ["aiortc==1.15.0"],
   "version": "1.0.0"
 }
