@@ -5,3 +5,4 @@ test_live*.py
 *.har
 *.jpg
 *.png
+!brands/**/*.png
