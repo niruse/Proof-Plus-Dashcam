@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for the Proof Dashcam integration."""
+"""DataUpdateCoordinator for the Proof Plus integration."""
 from __future__ import annotations
 
 import logging

@@ -1,4 +1,4 @@
-"""The Proof Dashcam integration."""
+"""The Proof Plus integration."""
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
@@ -22,7 +22,7 @@ def _platforms_for(entry: ConfigEntry) -> list[str]:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Proof Dashcam from a config entry."""
+    """Set up Proof Plus from a config entry."""
 
     @callback
     def _store_refresh_token(token: str) -> None:

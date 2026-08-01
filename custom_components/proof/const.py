@@ -1,4 +1,4 @@
-"""Constants for the Proof Dashcam integration."""
+"""Constants for the Proof Plus integration."""
 from __future__ import annotations
 
 DOMAIN = "proof"

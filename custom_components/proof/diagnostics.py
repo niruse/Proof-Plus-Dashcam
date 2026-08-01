@@ -1,4 +1,4 @@
-"""Diagnostics support for the Proof Dashcam integration."""
+"""Diagnostics support for the Proof Plus integration."""
 from __future__ import annotations
 
 from typing import Any

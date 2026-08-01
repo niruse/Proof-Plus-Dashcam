@@ -42,7 +42,7 @@ async def async_get_media_source(hass: HomeAssistant) -> MediaSource:
 class ProofMediaSource(MediaSource):
     """Provide recorded dashcam media."""
 
-    name = "Proof Dashcam"
+    name = "Proof Plus"
 
     def __init__(self, hass: HomeAssistant) -> None:
         super().__init__(DOMAIN)
@@ -112,7 +112,7 @@ class ProofMediaSource(MediaSource):
             for entry_id, coordinator in coordinators.items()
             for device_id, dev in coordinator.data.items()
         ]
-        return self._folder(None, "Proof Dashcam", children)
+        return self._folder(None, "Proof Plus", children)
 
     def _browse_device(
         self,

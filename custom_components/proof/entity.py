@@ -1,4 +1,4 @@
-"""Base entity for the Proof Dashcam integration."""
+"""Base entity for the Proof Plus integration."""
 from __future__ import annotations
 
 from typing import Any

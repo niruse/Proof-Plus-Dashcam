@@ -1,6 +1,6 @@
 {
   "domain": "proof",
-  "name": "Proof Dashcam",
+  "name": "Proof Plus",
   "codeowners": ["@niruse"],
   "config_flow": true,
   "after_dependencies": ["media_source"],

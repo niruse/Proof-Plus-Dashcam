@@ -1,4 +1,4 @@
-# Proof Dashcam — Home Assistant Integration
+# Proof Plus — Home Assistant Integration
 
 Custom integration for [Proof](https://2proof.co.il) 4G dashcams (IME/EDOG devices). It signs in
 to the Proof cloud with the same account as the mobile app and exposes your dashcam's live
@@ -34,7 +34,7 @@ unless you turn it on:
   snapshot, with the event's GPS location. The image is only downloaded when Home Assistant
   renders it.
 - **Media browser** — lists recorded impact and collision clips (image and video) under
-  **Media → Proof Dashcam**, streamed straight from the Proof file server on demand.
+  **Media → Proof Plus**, streamed straight from the Proof file server on demand.
 - **Live view** — see the note under [Live view](#live-view) below.
 
 ## Installation
@@ -43,7 +43,7 @@ unless you turn it on:
 
 1. HACS → Integrations → ⋮ → **Custom repositories**
 2. Add `https://github.com/niruse/Proof-Plus` as an **Integration**
-3. Install **Proof Dashcam** and restart Home Assistant
+3. Install **Proof Plus** and restart Home Assistant
 
 ### Manual
 
@@ -52,7 +52,7 @@ restart Home Assistant.
 
 ## Configuration
 
-1. Settings → Devices & Services → **Add Integration** → search for **Proof Dashcam**
+1. Settings → Devices & Services → **Add Integration** → search for **Proof Plus**
 2. Enter the **phone number** and password you use in the Proof mobile app
    (email addresses are not accepted by the Proof login service)
 3. Enter the verification code that is sent to that number by SMS

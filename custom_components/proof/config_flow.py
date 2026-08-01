@@ -1,4 +1,4 @@
-"""Config flow for the Proof Dashcam integration.
+"""Config flow for the Proof Plus integration.
 
 Login follows the mobile app: phone number and password, then an SMS code.
 """
@@ -53,7 +53,7 @@ STEP_CODE_SCHEMA = vol.Schema({vol.Required(CONF_CODE): str})
 
 
 class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle the config flow for Proof Dashcam."""
+    """Handle the config flow for Proof Plus."""
 
     VERSION = 1
 
