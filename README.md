@@ -111,12 +111,13 @@ WebSocket as it happens. The integration keeps that socket open and records what
 `sensor.<device>_last_message`: the state is the newest alert's headline, and the recent ones
 (up to 50) are kept in its `messages` attribute for the dashboard to list.
 
-Because there is no history endpoint, the list starts empty and fills from the moment you add
-the integration; it will not show alerts your phone received earlier. (The app's own list is not
-fetched either — it is a local database on the phone, which is why the app can show older alerts
-that Home Assistant never saw.) Which alerts you get is
-controlled by the **Alerts** switches (ignition, vibration, collision, share button, geofence,
-over-speed), the same account settings the app uses.
+Because there is no history endpoint, the list starts empty and fills from the moment you add the
+integration — it cannot show alerts your phone received earlier. The app's list is not fetched
+either: it is a local database on the phone, which is why the app keeps showing older alerts that
+Home Assistant never saw.
+
+Which alerts you get is controlled by the **Alerts** switches (ignition, vibration, collision,
+share button, geofence, over-speed), the same account settings the app uses.
 
 Every alert also fires a `proof_plus_message` event on the Home Assistant bus, so you can trigger
 automations on one directly:
