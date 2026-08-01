@@ -85,6 +85,16 @@ front camera shows until you switch back.
 The **keep-alive** option controls how long the stream stays up after you stop watching (0 keeps it
 running until closed, which uses cellular data continuously).
 
+## Example dashboard
+
+`examples/dashboard.json` is a complete dashboard covering everything the integration exposes:
+live front and rear cameras, the map and trip figures, the latest event snapshot from each camera,
+device status, all of the dashcam settings and the account's alert toggles.
+
+To use it: create a new dashboard, open its ⋮ menu → **Raw configuration editor**, paste the file
+in, and replace `YOUR_DEVICE` with your dashcam's id (the number in your entity names, e.g.
+`camera.1234567_live_view` → `1234567`).
+
 ## Notes
 
 - Cloud polling only; nothing is sent to third parties besides the official Proof cloud.

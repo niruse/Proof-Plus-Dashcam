@@ -32,7 +32,10 @@ from .const import CONF_ENABLE_MEDIA_BROWSER, DOMAIN
 from .coordinator import ProofCoordinator
 
 _SEP = "|"
-_EVENT_TYPES = {"shake": "Impact events", "coll": "Collisions"}
+# "all" is the cloud album: the API returns every stored file when the type is
+# left empty, which is what the app shows under its own album.
+_EVENT_TYPES = {"all": "Cloud album", "shake": "Impact events", "coll": "Collisions"}
+_API_TYPES = {"all": ""}
 _KINDS = {"video": "Videos", "image": "Images"}
 _CAMERAS = {0: "Front", 1: "Rear"}
 
@@ -186,7 +189,7 @@ class ProofMediaSource(MediaSource):
         if coordinator is None:
             raise Unresolvable("This Proof entry no longer allows media browsing")
         files = await coordinator.client.async_get_files(
-            device_id, event_type, size=100
+            device_id, _API_TYPES.get(event_type, event_type), size=100
         )
         children = [
             clip

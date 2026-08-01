@@ -1,0 +1,259 @@
+{
+  "views": [
+    {
+      "title": "Dashcam",
+      "path": "dashcam",
+      "icon": "mdi:cctv",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Live view",
+              "icon": "mdi:video"
+            },
+            {
+              "type": "picture-entity",
+              "entity": "camera.YOUR_DEVICE_live_view",
+              "name": "Front camera",
+              "camera_view": "live",
+              "show_state": false
+            },
+            {
+              "type": "picture-entity",
+              "entity": "camera.YOUR_DEVICE_rear_camera",
+              "name": "Rear camera",
+              "camera_view": "live",
+              "show_state": false
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Location",
+              "icon": "mdi:map-marker"
+            },
+            {
+              "type": "map",
+              "entities": [
+                {
+                  "entity": "device_tracker.YOUR_DEVICE"
+                }
+              ],
+              "default_zoom": 16,
+              "theme_mode": "auto"
+            },
+            {
+              "type": "entities",
+              "entities": [
+                {
+                  "entity": "sensor.YOUR_DEVICE_speed",
+                  "name": "Speed"
+                },
+                {
+                  "entity": "sensor.YOUR_DEVICE_heading",
+                  "name": "Heading"
+                },
+                {
+                  "entity": "sensor.YOUR_DEVICE_altitude",
+                  "name": "Altitude"
+                },
+                {
+                  "entity": "sensor.YOUR_DEVICE_total_distance",
+                  "name": "Odometer"
+                },
+                {
+                  "entity": "sensor.YOUR_DEVICE_last_seen",
+                  "name": "Last seen"
+                }
+              ]
+            },
+            {
+              "type": "button",
+              "entity": "button.YOUR_DEVICE_update_location",
+              "name": "Update location",
+              "icon": "mdi:crosshairs-gps",
+              "tap_action": {
+                "action": "toggle"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Last event",
+              "icon": "mdi:alert"
+            },
+            {
+              "type": "picture-entity",
+              "entity": "image.YOUR_DEVICE_last_event",
+              "name": "Last event \u2013 front",
+              "show_state": true
+            },
+            {
+              "type": "picture-entity",
+              "entity": "image.YOUR_DEVICE_last_event_rear",
+              "name": "Last event \u2013 rear",
+              "show_state": true
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Status",
+              "icon": "mdi:car-info"
+            },
+            {
+              "type": "entities",
+              "entities": [
+                {
+                  "entity": "binary_sensor.YOUR_DEVICE_online",
+                  "name": "Online"
+                },
+                {
+                  "entity": "binary_sensor.YOUR_DEVICE_ignition",
+                  "name": "Ignition"
+                },
+                {
+                  "entity": "sensor.YOUR_DEVICE_device_temperature",
+                  "name": "Temperature"
+                },
+                {
+                  "entity": "sensor.YOUR_DEVICE_gsm_signal",
+                  "name": "GSM signal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Camera settings",
+              "icon": "mdi:cog"
+            },
+            {
+              "type": "entities",
+              "entities": [
+                {
+                  "entity": "button.YOUR_DEVICE_refresh_settings",
+                  "name": "Read from device"
+                },
+                {
+                  "entity": "number.YOUR_DEVICE_speaker_volume",
+                  "name": "Speaker volume"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_record_voice",
+                  "name": "Record voice"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_voice_messages",
+                  "name": "Voice messages"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_motion_detection",
+                  "name": "Motion detection"
+                },
+                {
+                  "entity": "select.YOUR_DEVICE_motion_sensitivity",
+                  "name": "Motion sensitivity"
+                },
+                {
+                  "entity": "select.YOUR_DEVICE_accident_sensitivity",
+                  "name": "Accident sensitivity"
+                },
+                {
+                  "entity": "select.YOUR_DEVICE_car_idle_timing",
+                  "name": "Car idle timing"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_time_lapse_parking_recording",
+                  "name": "Time-lapse parking"
+                },
+                {
+                  "entity": "select.YOUR_DEVICE_time_lapse_recording_duration",
+                  "name": "Recording duration"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_rear_camera_enabled",
+                  "name": "Rear camera"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_wi_fi",
+                  "name": "Wi-Fi"
+                }
+              ],
+              "footer": {
+                "type": "graph",
+                "entity": "sensor.YOUR_DEVICE_speed",
+                "hours_to_show": 24
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Alerts",
+              "icon": "mdi:bell"
+            },
+            {
+              "type": "entities",
+              "entities": [
+                {
+                  "entity": "switch.YOUR_DEVICE_alert_ignition",
+                  "name": "Ignition"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_alert_vibration",
+                  "name": "Vibration"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_alert_accident",
+                  "name": "Accident"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_alert_share_button",
+                  "name": "Share button"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_alert_car_idled",
+                  "name": "Car idled"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_alert_geofence",
+                  "name": "Geofence"
+                },
+                {
+                  "entity": "switch.YOUR_DEVICE_alert_overspeed",
+                  "name": "Overspeed"
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "content": "### Recordings\nImpact clips, collision clips and the full cloud album are under **Media \u2192 Proof Plus**, split into **Videos** and **Images** and labelled by camera."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
