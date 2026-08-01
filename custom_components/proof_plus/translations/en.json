@@ -74,7 +74,8 @@
     },
     "binary_sensor": {
       "online": { "name": "Online" },
-      "ignition": { "name": "Ignition" }
+      "ignition": { "name": "Ignition" },
+      "gps_fix": { "name": "GPS fix" }
     },
     "camera": {
       "live": { "name": "Live view" },

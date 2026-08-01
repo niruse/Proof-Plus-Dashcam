@@ -11,6 +11,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -44,6 +45,14 @@ BINARY_SENSORS: tuple[ProofBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.POWER,
         icon="mdi:key-variant",
         value_fn=_ignition,
+    ),
+    ProofBinarySensorDescription(
+        key="gps_fix",
+        translation_key="gps_fix",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:crosshairs-gps",
+        value_fn=lambda dev: ((dev.get("status") or {}).get("gps") or {}).get("valid"),
     ),
 )
 
