@@ -464,13 +464,54 @@
             },
             {
               "type": "tile",
-              "entity": "sensor.YOUR_DEVICE_gsm_signal",
-              "name": "GSM signal"
+              "entity": "sensor.YOUR_DEVICE_free_memory",
+              "name": "Free memory"
             },
             {
               "type": "tile",
               "entity": "sensor.YOUR_DEVICE_last_seen",
               "name": "Last seen"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "column_span": 2,
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Self-check",
+              "icon": "mdi:clipboard-check",
+              "heading_style": "title"
+            },
+            {
+              "type": "entities",
+              "entities": [
+                {
+                  "entity": "sensor.YOUR_DEVICE_sim",
+                  "name": "SIM card"
+                },
+                {
+                  "entity": "sensor.YOUR_DEVICE_gsm_signal",
+                  "name": "GSM signal"
+                },
+                {
+                  "entity": "binary_sensor.YOUR_DEVICE_online",
+                  "name": "Server"
+                },
+                {
+                  "entity": "binary_sensor.YOUR_DEVICE_ignition",
+                  "name": "Ignition sense"
+                },
+                {
+                  "entity": "binary_sensor.YOUR_DEVICE_gps_fix",
+                  "name": "Positioning (GPS)"
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "content": "The dashcam only answers while the ignition is on. Parked, these show the values from its last report \u2014 see **Last seen**."
             }
           ]
         }
