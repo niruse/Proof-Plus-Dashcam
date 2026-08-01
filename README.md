@@ -87,9 +87,12 @@ running until closed, which uses cellular data continuously).
 
 ## Example dashboard
 
-`examples/dashboard.json` is a complete dashboard covering everything the integration exposes:
-live front and rear cameras, the map and trip figures, the latest event snapshot from each camera,
-device status, all of the dashcam settings and the account's alert toggles.
+`examples/dashboard.json` is a complete dashboard laid out like the mobile app, with four tabs:
+
+- **Live** — front and rear cameras, online/ignition status and a speed trend
+- **Location** — map with 24 h of history, plus speed, heading, altitude and odometer
+- **Media** — the latest event snapshot from each camera, and a link to the recordings
+- **Settings** — every dashcam setting and the account's alert toggles
 
 To use it: create a new dashboard, open its ⋮ menu → **Raw configuration editor**, paste the file
 in, and replace `YOUR_DEVICE` with your dashcam's id (the number in your entity names, e.g.

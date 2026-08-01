@@ -1,109 +1,46 @@
 {
   "views": [
     {
-      "title": "Dashcam",
-      "path": "dashcam",
-      "icon": "mdi:cctv",
+      "title": "Live",
+      "path": "live",
+      "icon": "mdi:video",
       "type": "sections",
-      "max_columns": 3,
+      "max_columns": 2,
       "sections": [
         {
           "type": "grid",
           "cards": [
             {
               "type": "heading",
-              "heading": "Live view",
-              "icon": "mdi:video"
+              "heading": "Cameras",
+              "icon": "mdi:cctv",
+              "heading_style": "title"
             },
             {
               "type": "picture-entity",
               "entity": "camera.YOUR_DEVICE_live_view",
-              "name": "Front camera",
+              "name": "Front",
               "camera_view": "live",
-              "show_state": false
+              "show_name": true,
+              "show_state": false,
+              "tap_action": {
+                "action": "more-info"
+              }
             },
             {
               "type": "picture-entity",
               "entity": "camera.YOUR_DEVICE_rear_camera",
-              "name": "Rear camera",
+              "name": "Rear",
               "camera_view": "live",
-              "show_state": false
-            }
-          ]
-        },
-        {
-          "type": "grid",
-          "cards": [
-            {
-              "type": "heading",
-              "heading": "Location",
-              "icon": "mdi:map-marker"
-            },
-            {
-              "type": "map",
-              "entities": [
-                {
-                  "entity": "device_tracker.YOUR_DEVICE"
-                }
-              ],
-              "default_zoom": 16,
-              "theme_mode": "auto"
-            },
-            {
-              "type": "entities",
-              "entities": [
-                {
-                  "entity": "sensor.YOUR_DEVICE_speed",
-                  "name": "Speed"
-                },
-                {
-                  "entity": "sensor.YOUR_DEVICE_heading",
-                  "name": "Heading"
-                },
-                {
-                  "entity": "sensor.YOUR_DEVICE_altitude",
-                  "name": "Altitude"
-                },
-                {
-                  "entity": "sensor.YOUR_DEVICE_total_distance",
-                  "name": "Odometer"
-                },
-                {
-                  "entity": "sensor.YOUR_DEVICE_last_seen",
-                  "name": "Last seen"
-                }
-              ]
-            },
-            {
-              "type": "button",
-              "entity": "button.YOUR_DEVICE_update_location",
-              "name": "Update location",
-              "icon": "mdi:crosshairs-gps",
+              "show_name": true,
+              "show_state": false,
               "tap_action": {
-                "action": "toggle"
+                "action": "more-info"
               }
-            }
-          ]
-        },
-        {
-          "type": "grid",
-          "cards": [
-            {
-              "type": "heading",
-              "heading": "Last event",
-              "icon": "mdi:alert"
             },
             {
-              "type": "picture-entity",
-              "entity": "image.YOUR_DEVICE_last_event",
-              "name": "Last event \u2013 front",
-              "show_state": true
-            },
-            {
-              "type": "picture-entity",
-              "entity": "image.YOUR_DEVICE_last_event_rear",
-              "name": "Last event \u2013 rear",
-              "show_state": true
+              "type": "markdown",
+              "content": "The dashcam streams over its own mobile data, and only while a camera is open. It can show one camera at a time."
             }
           ]
         },
@@ -113,26 +50,241 @@
             {
               "type": "heading",
               "heading": "Status",
-              "icon": "mdi:car-info"
+              "icon": "mdi:car-connected",
+              "heading_style": "title"
             },
             {
-              "type": "entities",
+              "type": "tile",
+              "entity": "binary_sensor.YOUR_DEVICE_online",
+              "name": "Online",
+              "color": "green"
+            },
+            {
+              "type": "tile",
+              "entity": "binary_sensor.YOUR_DEVICE_ignition",
+              "name": "Ignition",
+              "color": "amber"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_speed",
+              "name": "Speed",
+              "color": "blue",
+              "features": [
+                {
+                  "type": "trend-graph",
+                  "hours_to_show": 6
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_last_seen",
+              "name": "Last seen"
+            },
+            {
+              "type": "tile",
+              "entity": "button.YOUR_DEVICE_update_location",
+              "name": "Update location",
+              "tap_action": {
+                "action": "toggle"
+              },
+              "color": "cyan"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Location",
+      "path": "location",
+      "icon": "mdi:map-marker",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "column_span": 2,
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Where is it now",
+              "icon": "mdi:map",
+              "heading_style": "title"
+            },
+            {
+              "type": "map",
               "entities": [
                 {
-                  "entity": "binary_sensor.YOUR_DEVICE_online",
-                  "name": "Online"
+                  "entity": "device_tracker.YOUR_DEVICE"
+                }
+              ],
+              "default_zoom": 16,
+              "hours_to_show": 24,
+              "theme_mode": "auto"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Trip",
+              "icon": "mdi:speedometer",
+              "heading_style": "title"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_speed",
+              "name": "Speed",
+              "color": "blue"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_heading",
+              "name": "Heading"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_altitude",
+              "name": "Altitude"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_total_distance",
+              "name": "Odometer",
+              "color": "purple"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "History",
+              "icon": "mdi:chart-line",
+              "heading_style": "title"
+            },
+            {
+              "type": "history-graph",
+              "hours_to_show": 24,
+              "entities": [
+                {
+                  "entity": "sensor.YOUR_DEVICE_speed",
+                  "name": "Speed"
                 },
                 {
                   "entity": "binary_sensor.YOUR_DEVICE_ignition",
                   "name": "Ignition"
-                },
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Media",
+      "path": "media",
+      "icon": "mdi:image-multiple",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Latest event",
+              "icon": "mdi:alert-decagram",
+              "heading_style": "title"
+            },
+            {
+              "type": "picture-entity",
+              "entity": "image.YOUR_DEVICE_last_event",
+              "name": "Front",
+              "show_state": true
+            },
+            {
+              "type": "picture-entity",
+              "entity": "image.YOUR_DEVICE_last_event_rear",
+              "name": "Rear",
+              "show_state": true
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Recordings",
+              "icon": "mdi:folder-play",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "content": "Open **Media \u2192 Proof Plus** to browse:\n\n- **Cloud album** \u2014 everything stored in the cloud\n- **Impact events** \u2014 vibration/impact clips\n- **Collisions** \u2014 accident clips\n\nEach is split into **Videos** and **Images**, labelled by time and camera."
+            },
+            {
+              "type": "button",
+              "name": "Open media browser",
+              "icon": "mdi:folder-multiple-image",
+              "show_state": false,
+              "tap_action": {
+                "action": "navigate",
+                "navigation_path": "/media-browser"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Settings",
+      "path": "settings",
+      "icon": "mdi:cog",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Recording",
+              "icon": "mdi:record-rec",
+              "heading_style": "title"
+            },
+            {
+              "type": "tile",
+              "entity": "switch.YOUR_DEVICE_record_voice",
+              "name": "Record voice",
+              "features": [
                 {
-                  "entity": "sensor.YOUR_DEVICE_device_temperature",
-                  "name": "Temperature"
-                },
+                  "type": "toggle"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "switch.YOUR_DEVICE_time_lapse_parking_recording",
+              "name": "Time-lapse parking",
+              "features": [
                 {
-                  "entity": "sensor.YOUR_DEVICE_gsm_signal",
-                  "name": "GSM signal"
+                  "type": "toggle"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "select.YOUR_DEVICE_time_lapse_recording_duration",
+              "name": "Recording duration",
+              "features": [
+                {
+                  "type": "select-options"
                 }
               ]
             }
@@ -143,66 +295,49 @@
           "cards": [
             {
               "type": "heading",
-              "heading": "Camera settings",
-              "icon": "mdi:cog"
+              "heading": "Detection",
+              "icon": "mdi:motion-sensor",
+              "heading_style": "title"
             },
             {
-              "type": "entities",
-              "entities": [
+              "type": "tile",
+              "entity": "switch.YOUR_DEVICE_motion_detection",
+              "name": "Motion detection",
+              "features": [
                 {
-                  "entity": "button.YOUR_DEVICE_refresh_settings",
-                  "name": "Read from device"
-                },
-                {
-                  "entity": "number.YOUR_DEVICE_speaker_volume",
-                  "name": "Speaker volume"
-                },
-                {
-                  "entity": "switch.YOUR_DEVICE_record_voice",
-                  "name": "Record voice"
-                },
-                {
-                  "entity": "switch.YOUR_DEVICE_voice_messages",
-                  "name": "Voice messages"
-                },
-                {
-                  "entity": "switch.YOUR_DEVICE_motion_detection",
-                  "name": "Motion detection"
-                },
-                {
-                  "entity": "select.YOUR_DEVICE_motion_sensitivity",
-                  "name": "Motion sensitivity"
-                },
-                {
-                  "entity": "select.YOUR_DEVICE_accident_sensitivity",
-                  "name": "Accident sensitivity"
-                },
-                {
-                  "entity": "select.YOUR_DEVICE_car_idle_timing",
-                  "name": "Car idle timing"
-                },
-                {
-                  "entity": "switch.YOUR_DEVICE_time_lapse_parking_recording",
-                  "name": "Time-lapse parking"
-                },
-                {
-                  "entity": "select.YOUR_DEVICE_time_lapse_recording_duration",
-                  "name": "Recording duration"
-                },
-                {
-                  "entity": "switch.YOUR_DEVICE_rear_camera_enabled",
-                  "name": "Rear camera"
-                },
-                {
-                  "entity": "switch.YOUR_DEVICE_wi_fi",
-                  "name": "Wi-Fi"
+                  "type": "toggle"
                 }
-              ],
-              "footer": {
-                "type": "graph",
-                "entity": "sensor.YOUR_DEVICE_speed",
-                "hours_to_show": 24
-              }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "select.YOUR_DEVICE_motion_sensitivity",
+              "name": "Motion sensitivity",
+              "features": [
+                {
+                  "type": "select-options"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "select.YOUR_DEVICE_accident_sensitivity",
+              "name": "Accident sensitivity",
+              "features": [
+                {
+                  "type": "select-options"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "select.YOUR_DEVICE_car_idle_timing",
+              "name": "Car idle timing",
+              "features": [
+                {
+                  "type": "select-options"
+                }
+              ]
             }
           ]
         },
@@ -211,8 +346,71 @@
           "cards": [
             {
               "type": "heading",
-              "heading": "Alerts",
-              "icon": "mdi:bell"
+              "heading": "Device",
+              "icon": "mdi:cellphone-cog",
+              "heading_style": "title"
+            },
+            {
+              "type": "tile",
+              "entity": "number.YOUR_DEVICE_speaker_volume",
+              "name": "Speaker volume",
+              "features": [
+                {
+                  "type": "numeric-input",
+                  "style": "slider"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "switch.YOUR_DEVICE_voice_messages",
+              "name": "Voice messages",
+              "features": [
+                {
+                  "type": "toggle"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "switch.YOUR_DEVICE_rear_camera_enabled",
+              "name": "Rear camera",
+              "features": [
+                {
+                  "type": "toggle"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "switch.YOUR_DEVICE_wi_fi",
+              "name": "Wi-Fi",
+              "features": [
+                {
+                  "type": "toggle"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "button.YOUR_DEVICE_refresh_settings",
+              "name": "Read from device",
+              "tap_action": {
+                "action": "toggle"
+              },
+              "color": "cyan"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "column_span": 2,
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Alerts I receive",
+              "icon": "mdi:bell-ring",
+              "heading_style": "title"
             },
             {
               "type": "entities",
@@ -246,10 +444,33 @@
                   "name": "Overspeed"
                 }
               ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Diagnostics",
+              "icon": "mdi:stethoscope",
+              "heading_style": "title"
             },
             {
-              "type": "markdown",
-              "content": "### Recordings\nImpact clips, collision clips and the full cloud album are under **Media \u2192 Proof Plus**, split into **Videos** and **Images** and labelled by camera."
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_device_temperature",
+              "name": "Temperature",
+              "color": "red"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_gsm_signal",
+              "name": "GSM signal"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_last_seen",
+              "name": "Last seen"
             }
           ]
         }
