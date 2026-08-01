@@ -34,7 +34,12 @@ from .coordinator import ProofCoordinator
 _SEP = "|"
 # "all" is the cloud album: the API returns every stored file when the type is
 # left empty, which is what the app shows under its own album.
-_EVENT_TYPES = {"all": "Cloud album", "shake": "Impact events", "coll": "Collisions"}
+_EVENT_TYPES = {
+    "all": "Cloud album",
+    "shake": "Vibration",
+    "coll": "Collision",
+    "sos": "Share button",
+}
 _API_TYPES = {"all": ""}
 _KINDS = {"video": "Videos", "image": "Images"}
 _CAMERAS = {0: "Front", 1: "Rear"}
@@ -196,11 +201,24 @@ class ProofMediaSource(MediaSource):
             _API_TYPES.get(event_type, event_type),
             size=min(limit * 4, 100),
         )
+        # Videos have no thumbnail of their own, so pair each event with the
+        # image the dashcam saved alongside it, like the app's album grid.
+        thumbs = {
+            (f.get("sid"), f.get("camid")): f.get("fid")
+            for f in files
+            if f.get("ftype") == "image" and f.get("fid")
+        }
         children = [
             clip
             for f in files
             if (f.get("ftype") == kind)
-            and (clip := self._clip(entry_id, device_id, kind, f)) is not None
+            and (
+                clip := self._clip(
+                    entry_id, device_id, kind, f,
+                    thumbs.get((f.get("sid"), f.get("camid"))),
+                )
+            )
+            is not None
         ][:limit]
         return self._folder(
             f"{entry_id}{_SEP}{device_id}{_SEP}{event_type}{_SEP}{kind}",
@@ -209,7 +227,12 @@ class ProofMediaSource(MediaSource):
         )
 
     def _clip(
-        self, entry_id: str, device_id: str, kind: str, f: dict
+        self,
+        entry_id: str,
+        device_id: str,
+        kind: str,
+        f: dict,
+        thumb_fid: str | None = None,
     ) -> BrowseMediaSource | None:
         fid = f.get("fid")
         if not fid:
@@ -230,4 +253,12 @@ class ProofMediaSource(MediaSource):
             title=f"{when} · {camera}",
             can_play=True,
             can_expand=False,
+            thumbnail=self._thumbnail(entry_id, thumb_fid or (fid if not is_video else None)),
         )
+
+    def _thumbnail(self, entry_id: str, fid: str | None) -> str | None:
+        """Resolve a file id to a picture the media browser can show."""
+        if not fid:
+            return None
+        coordinator = self._coordinators().get(entry_id)
+        return coordinator.client.file_url(fid) if coordinator else None

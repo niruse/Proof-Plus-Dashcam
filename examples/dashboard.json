@@ -226,7 +226,7 @@
             },
             {
               "type": "markdown",
-              "content": "Open **Media \u2192 Proof Plus** to browse:\n\n- **Cloud album** \u2014 everything stored in the cloud\n- **Impact events** \u2014 vibration/impact clips\n- **Collisions** \u2014 accident clips\n\nEach is split into **Videos** and **Images**, labelled by time and camera."
+              "content": "**Media > Proof Plus** is the album: a grid of thumbnails you tap to view a photo full screen or to play a clip, the same as the app. **Cloud album** has everything; **Vibration**, **Collision** and **Share button** hold each kind of event. Each splits into **Videos** and **Images**, labelled by time and camera."
             },
             {
               "type": "button",
