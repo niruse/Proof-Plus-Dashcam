@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-CMD_PING, CMD_ACK, CMD_LOGIN, CMD_MSG = 0, 1, 2, 4
+CMD_PING, CMD_ACK, CMD_LOGIN, CMD_MSG, CMD_REQUEST = 0, 1, 2, 4, 5
 MSG_EVENT = 7
 
 HEARTBEAT_INTERVAL = 30
@@ -50,7 +50,17 @@ class ProofMessageListener:
         self._coordinator = coordinator
         self._task: asyncio.Task | None = None
         self._closed = False
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._seq = 0
+        # Counters, surfaced as sensor attributes. This box keeps no log file,
+        # so they are the only way to tell a quiet socket from a dead one.
         self.connected = False
+        self.connected_since: str | None = None
+        self.frames = 0
+        self.replies = 0
+        self.alerts = 0
+        self.last_frame: str | None = None
+        self.session_id: str | None = None
 
     def start(self) -> None:
         """Begin listening in the background."""
@@ -87,43 +97,71 @@ class ProofMessageListener:
         async with session.ws_connect(
             f"ws://{im_ip}:{ws_port}/imclient?access_token={token}", timeout=20
         ) as ws:
-            await ws.send_str(
-                json.dumps(
-                    [
-                        CMD_LOGIN,
-                        0,
-                        {
-                            "token": token,
-                            "info": {
-                                "ver": "3.1.37",
-                                "model": "homeassistant",
-                                "sysver": "12",
-                                "pid": "ha-proof-messages",
-                                "lang": "en_us",
-                                "os": "android",
-                                "app": "Proof",
-                            },
+            self._ws = ws
+            self._seq = 0
+            await self._send(
+                [
+                    CMD_LOGIN,
+                    0,
+                    {
+                        "token": token,
+                        "info": {
+                            "ver": "3.1.37",
+                            "model": "homeassistant",
+                            "sysver": "12",
+                            "pid": "ha-proof-messages",
+                            "lang": "en_us",
+                            "os": "android",
+                            "app": "Proof",
                         },
-                    ]
-                )
+                    },
+                ]
             )
             _LOGGER.debug("Alert socket connected to %s:%s", im_ip, ws_port)
             self.connected = True
+            self.connected_since = dt_util.utcnow().isoformat()
             heartbeat = asyncio.ensure_future(self._heartbeat(ws))
+            # Ask the server something it must answer. If a reply comes back the
+            # socket is genuinely live and two-way, which separates "connected
+            # but no alerts happened" from "connected to nothing".
+            probe = asyncio.ensure_future(self._probe())
             try:
                 async for message in ws:
                     if message.type is not aiohttp.WSMsgType.TEXT:
                         break
+                    self.frames += 1
+                    self.last_frame = dt_util.utcnow().isoformat()
                     self._handle(message.data)
             finally:
                 self.connected = False
+                probe.cancel()
                 heartbeat.cancel()
+                self._ws = None
+
+    async def _send(self, packet: list[Any]) -> None:
+        if self._ws is not None and not self._ws.closed:
+            await self._ws.send_str(json.dumps(packet))
+
+    def _next_seq(self) -> int:
+        self._seq += 1
+        return self._seq
+
+    async def _probe(self) -> None:
+        """Ask the server for the devices' status, as the app does on start."""
+        await asyncio.sleep(2)
+        devices = list(self._coordinator.data)
+        if devices:
+            await self._send(
+                [CMD_REQUEST, self._next_seq(), ["u.getdevstatus", devices]]
+            )
 
     async def _heartbeat(self, ws: aiohttp.ClientWebSocketResponse) -> None:
         try:
             while not ws.closed:
                 await asyncio.sleep(HEARTBEAT_INTERVAL)
-                await ws.send_str(json.dumps([CMD_PING, 0, None]))
+                # The app's ping carries an incrementing sequence and a 1, and
+                # the server is picky about the shape.
+                await self._send([CMD_PING, self._next_seq(), 1])
         except (asyncio.CancelledError, ConnectionError):
             pass
 
@@ -133,8 +171,25 @@ class ProofMessageListener:
             packet = json.loads(raw)
         except ValueError:
             return
-        if not isinstance(packet, list) or len(packet) < 3 or packet[0] != CMD_MSG:
+        if not isinstance(packet, list) or len(packet) < 3:
             return
+        if packet[0] == CMD_ACK:
+            self.replies += 1
+            # The login reply carries our session id. Worth keeping: it names
+            # the address the cloud delivers to, which is what to compare if
+            # alerts ever go to the phone instead.
+            if isinstance(packet[-1], dict) and packet[-1].get("sid"):
+                self.session_id = packet[-1]["sid"]
+            return
+        if packet[0] != CMD_MSG:
+            return
+
+        # The server holds a message as undelivered until it is acknowledged,
+        # and stops sending more without it.
+        self._hass.async_create_task(
+            self._send([CMD_ACK, packet[1], 0, []])
+        )
+
         envelope = packet[2]
         if not isinstance(envelope, list) or len(envelope) < 5:
             return
@@ -160,6 +215,7 @@ class ProofMessageListener:
             message["latitude"], message["longitude"] = loc[0], loc[1]
 
         stored = self._coordinator.messages.setdefault(device_id, [])
+        self.alerts += 1
         stored.insert(0, message)
         del stored[MAX_MESSAGES:]
         self._coordinator.save_state()

@@ -231,6 +231,16 @@ class ProofMessageSensor(ProofEntity, SensorEntity):
             # dropped connection when no message has come in for a while.
             "listening": bool(listener and listener.connected),
         }
+        if listener is not None:
+            # Diagnostics: `replies` proves the server is answering us, so a
+            # quiet feed can be told apart from a socket that is not really
+            # attached to the account.
+            attrs["connected_since"] = listener.connected_since
+            attrs["frames_received"] = listener.frames
+            attrs["replies_received"] = listener.replies
+            attrs["alerts_received"] = listener.alerts
+            attrs["last_frame"] = listener.last_frame
+            attrs["session_id"] = listener.session_id
         if not self._messages:
             return attrs
         newest = self._messages[0]

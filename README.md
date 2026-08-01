@@ -112,7 +112,9 @@ WebSocket as it happens. The integration keeps that socket open and records what
 (up to 50) are kept in its `messages` attribute for the dashboard to list.
 
 Because there is no history endpoint, the list starts empty and fills from the moment you add
-the integration; it will not show alerts your phone received earlier. Which alerts you get is
+the integration; it will not show alerts your phone received earlier. (The app's own list is not
+fetched either — it is a local database on the phone, which is why the app can show older alerts
+that Home Assistant never saw.) Which alerts you get is
 controlled by the **Alerts** switches (ignition, vibration, collision, share button, geofence,
 over-speed), the same account settings the app uses.
 
@@ -128,7 +130,10 @@ trigger:
 ```
 
 The socket carries no video and never wakes the dashcam — it is a link between Home Assistant and
-the cloud. The sensor's `listening` attribute shows whether it is currently connected.
+the cloud. Because this is a push feed that can be quiet for hours, the sensor carries diagnostics
+so a working-but-idle connection can be told from a broken one: `listening`, `connected_since`,
+`session_id`, `frames_received`, `replies_received` and `alerts_received`. `replies_received`
+counts answers from the server, so anything above zero means the socket is genuinely two-way.
 
 ## Self-check
 
