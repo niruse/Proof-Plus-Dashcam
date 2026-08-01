@@ -111,11 +111,14 @@ WebSocket as it happens. The integration keeps that socket open and records what
 `sensor.<device>_last_message`: the state is the newest alert's headline, and the recent ones
 (up to 50) are kept in its `messages` attribute for the dashboard to list.
 
-The cloud queues alerts it has not delivered yet and releases them in a burst at login, so a new
-client can arrive with some history already waiting. Anything the cloud has already handed over and
-had acknowledged is gone from that queue, so the list generally starts empty or short and fills as
-alerts happen. Each alert carries an id and is stored under it, so a replayed batch cannot
-duplicate the list.
+**The list starts empty and fills as alerts happen.** There is no history to fetch: the cloud only
+queues alerts it has not delivered yet, releasing them in a burst at login and dropping them once
+they are acknowledged. Everything older lives in a local database on the phone — clear the app's
+storage and its Messages screen comes back empty too, so this is how the service works rather than
+a limit of the integration.
+
+Because that queue can still release a batch at login, each alert is stored under the id the cloud
+assigns it, so a replay cannot duplicate the list.
 
 Which alerts you get is controlled by the **Alerts** switches (ignition, vibration, collision,
 share button, geofence, over-speed), the same account settings the app uses.
