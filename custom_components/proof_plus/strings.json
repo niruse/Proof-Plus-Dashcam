@@ -68,7 +68,9 @@
       "temperature": { "name": "Device temperature" },
       "signal_strength": { "name": "GSM signal" },
       "total_distance": { "name": "Total distance" },
-      "last_seen": { "name": "Last seen" }
+      "last_seen": { "name": "Last seen" },
+      "free_memory": { "name": "Free memory" },
+      "sim": { "name": "SIM" }
     },
     "binary_sensor": {
       "online": { "name": "Online" },

@@ -17,6 +17,7 @@ from homeassistant.const import (
     DEGREE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
+    UnitOfInformation,
     UnitOfLength,
     UnitOfSpeed,
     UnitOfTemperature,
@@ -113,6 +114,24 @@ SENSORS: tuple[ProofSensorDescription, ...] = (
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=_last_seen,
+    ),
+    ProofSensorDescription(
+        key="free_memory",
+        translation_key="free_memory",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        native_unit_of_measurement=UnitOfInformation.KILOBYTES,
+        suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:memory",
+        value_fn=lambda dev: _status_stats(dev).get("mem"),
+    ),
+    ProofSensorDescription(
+        key="sim",
+        translation_key="sim",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:sim",
+        value_fn=lambda dev: (dev.get("stats") or {}).get("iccid"),
     ),
 )
 
