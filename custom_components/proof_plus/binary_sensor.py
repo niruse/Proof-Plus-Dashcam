@@ -62,11 +62,40 @@ async def async_setup_entry(
 ) -> None:
     """Set up binary sensors for every device on the account."""
     coordinator: ProofCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
+    entities: list[BinarySensorEntity] = [
         ProofBinarySensor(coordinator, device_id, description)
         for device_id in coordinator.data
         for description in BINARY_SENSORS
+    ]
+    entities.extend(
+        ProofSdCardSensor(coordinator, device_id) for device_id in coordinator.data
     )
+    async_add_entities(entities)
+
+
+class ProofSdCardSensor(ProofEntity, BinarySensorEntity):
+    """Whether the dashcam has an SD card, as the app's self-check reports."""
+
+    _attr_translation_key = "sd_card"
+    _attr_icon = "mdi:sd"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: ProofCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_sd_card"
+
+    @property
+    def available(self) -> bool:
+        """Known only once the storage has been read from the dashcam."""
+        return super().available and bool(
+            self.coordinator.storage.get(self._device_id)
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether a card is present."""
+        storage = self.coordinator.storage.get(self._device_id) or {}
+        return (storage.get("external_sd") or {}).get("exist")
 
 
 class ProofBinarySensor(ProofEntity, BinarySensorEntity):

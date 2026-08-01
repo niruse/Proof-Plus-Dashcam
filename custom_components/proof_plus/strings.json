@@ -121,6 +121,9 @@
       },
       "gps_fix": {
         "name": "GPS fix"
+      },
+      "sd_card": {
+        "name": "SD card"
       }
     },
     "camera": {

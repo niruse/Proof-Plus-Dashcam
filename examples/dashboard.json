@@ -532,11 +532,15 @@
                 },
                 {
                   "entity": "binary_sensor.YOUR_DEVICE_online",
-                  "name": "Server"
+                  "name": "Dashcam online"
                 },
                 {
                   "entity": "binary_sensor.YOUR_DEVICE_ignition",
                   "name": "Ignition sense"
+                },
+                {
+                  "entity": "binary_sensor.YOUR_DEVICE_sd_card",
+                  "name": "Sdcard"
                 },
                 {
                   "entity": "binary_sensor.YOUR_DEVICE_gps_fix",
@@ -546,7 +550,7 @@
             },
             {
               "type": "markdown",
-              "content": "The dashcam only answers while the ignition is on. Parked, these show the values from its last report \u2014 see **Last seen**."
+              "content": "Parked, the dashcam stops reporting to the cloud, so these show its last report \u2014 see **Last seen**. It still answers when asked: **Refresh settings** wakes it to read the settings and card. Ignition and positioning read as off while parked, which is normal and is not counted as a fault."
             }
           ]
         }
