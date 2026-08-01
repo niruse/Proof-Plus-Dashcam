@@ -45,13 +45,15 @@
           "enable_snapshot": "Show latest event snapshot (image entity)",
           "enable_media_browser": "Browse recorded event clips in Media",
           "enable_live": "Live view camera (streams over the dashcam's cellular data)",
-          "live_keepalive": "Live view: keep streaming for (seconds after you stop watching)"
+          "live_keepalive": "Live view: keep streaming for (seconds after you stop watching)",
+          "settings_interval": "Re-read camera settings every (hours, 0 = only when asked)"
         },
         "data_description": {
           "enable_snapshot": "Adds an image entity showing the most recent impact snapshot. Downloaded only when viewed.",
           "enable_media_browser": "Lists recorded impact and collision clips under Media. Nothing is downloaded until you open a clip.",
           "enable_live": "Adds a live camera. The dashcam only streams while you are watching, using its own mobile data.",
-          "live_keepalive": "How long to keep the live stream running after you stop watching. Set 0 to keep it running until you close it (uses cellular data continuously)."
+          "live_keepalive": "How long to keep the live stream running after you stop watching. Set 0 to keep it running until you close it (uses cellular data continuously).",
+          "settings_interval": "Reading the camera settings connects to the dashcam and uses a little of its mobile data. Leave at 0 to only read them when you press Refresh settings; the last values are remembered between restarts either way."
         }
       }
     }

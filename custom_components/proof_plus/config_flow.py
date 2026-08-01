@@ -35,7 +35,9 @@ from .const import (
     CONF_LIVE_KEEPALIVE,
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
+    CONF_SETTINGS_INTERVAL,
     DEFAULT_LIVE_KEEPALIVE,
+    DEFAULT_SETTINGS_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MIN_SCAN_INTERVAL,
@@ -226,6 +228,12 @@ class ProofOptionsFlow(OptionsFlow):
                             CONF_LIVE_KEEPALIVE, DEFAULT_LIVE_KEEPALIVE
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0)),
+                    vol.Required(
+                        CONF_SETTINGS_INTERVAL,
+                        default=options.get(
+                            CONF_SETTINGS_INTERVAL, DEFAULT_SETTINGS_INTERVAL
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=168)),
                 }
             ),
         )

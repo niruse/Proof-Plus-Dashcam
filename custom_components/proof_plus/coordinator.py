@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import ProofApiClient, ProofAuthError, ProofError
@@ -46,7 +47,12 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._live_sessions: dict[str, Any] = {}
         # Last known device settings per dashcam, read on demand over the
         # control channel (reading them requires connecting to the device).
+        # They are kept on disk so the controls still work after a restart
+        # instead of going unavailable until the user refreshes them.
         self.device_props: dict[str, dict[str, Any]] = {}
+        self._store: Store = Store(
+            hass, 1, f"{DOMAIN}.{entry.entry_id}.device_props"
+        )
         # Account-wide alert toggles (msgctrl); cheap to read, so polled.
         self.alerts: dict[str, bool] = {}
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -58,6 +64,15 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             update_interval=timedelta(seconds=scan_interval),
         )
 
+    async def async_load_stored_props(self) -> None:
+        """Restore the settings read during a previous run."""
+        if isinstance(stored := await self._store.async_load(), dict):
+            self.device_props = stored
+
+    def _save_props(self) -> None:
+        """Persist the settings so they survive a restart."""
+        self._store.async_delay_save(lambda: self.device_props, 2)
+
     async def async_get_device_props(
         self, hass: HomeAssistant, device_id: str
     ) -> dict[str, Any] | None:
@@ -68,6 +83,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         props = await client.async_get_props()
         if props is not None:
             self.device_props[device_id] = props
+            self._save_props()
             self.async_update_listeners()
         return props
 
@@ -82,9 +98,11 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             return False
         # Reflect the change immediately, then confirm from the device.
         self.device_props.setdefault(device_id, {}).update(props)
+        self._save_props()
         self.async_update_listeners()
         if (fresh := await client.async_get_props()) is not None:
             self.device_props[device_id] = fresh
+            self._save_props()
             self.async_update_listeners()
         return True
 
