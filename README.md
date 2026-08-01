@@ -113,9 +113,11 @@ bad), and the result carries `gsm_quality` and each item as attributes. Like the
 positioning read as failing while the car is parked — but they do not count towards the overall
 result, since a parked car is not a fault.
 
-It reads only values that are polled anyway, so it costs nothing extra. The SD card is reported as
-*unknown*: reading it means opening a live session to the dashcam (slow, and it uses the camera's
-mobile data), which is why the app's own self-check takes a while.
+It reads only values that are polled anyway, so it costs nothing extra and does not wake the camera.
+
+The SD-card and internal storage figures do need a live session, so they are read by **Refresh
+settings** rather than on the timer — that is why the app's own self-check takes a while. Once read,
+the values are remembered and the self-check reports the card too.
 
 ## Notes
 

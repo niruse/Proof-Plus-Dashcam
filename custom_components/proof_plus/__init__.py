@@ -83,14 +83,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for device_id in coordinator.data:
                 await coordinator.async_get_device_props(hass, device_id)
 
+        # Interval only. The settings are restored from disk at startup, and
+        # each read wakes the dashcam and uses its mobile data, so there is no
+        # reason to fetch them again every restart.
         entry.async_on_unload(
             async_track_time_interval(
                 hass, _async_refresh_settings, timedelta(hours=hours)
             )
-        )
-        # Fill the values in soon after startup rather than waiting a full period.
-        entry.async_on_unload(
-            async_call_later(hass, 60, _async_refresh_settings)
         )
 
     # Run the self-check on a schedule. It only reads values already polled,
@@ -105,12 +104,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for device_id in coordinator.data:
                 coordinator.async_run_self_check(device_id)
 
+        # Only on the interval — the last result is restored from disk, so
+        # there is no need to re-run it every time Home Assistant restarts.
         entry.async_on_unload(
             async_track_time_interval(
                 hass, _run_self_check, timedelta(hours=check_hours)
             )
         )
-        entry.async_on_unload(async_call_later(hass, 30, _run_self_check))
     return True
 
 

@@ -149,6 +149,14 @@ async def async_setup_entry(
     for device_id in coordinator.data:
         entities.append(ProofSelfCheckSensor(coordinator, device_id))
         entities.append(ProofSelfCheckRunSensor(coordinator, device_id))
+        for key, store, field in (
+            ("sd_card_free", "external_sd", "free"),
+            ("sd_card_total", "external_sd", "total"),
+            ("internal_free", "internal_sd", "free"),
+        ):
+            entities.append(
+                ProofStorageSensor(coordinator, device_id, key, store, field)
+            )
     async_add_entities(entities)
 
 
@@ -189,6 +197,36 @@ class ProofSelfCheckSensor(ProofEntity, SensorEntity):
             "gsm_signal_dbm": result.get("gsm_signal_dbm"),
             "problems": result.get("problems", []),
         }
+
+
+class ProofStorageSensor(ProofEntity, SensorEntity):
+    """A capacity figure the dashcam reports, in megabytes."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_native_unit_of_measurement = UnitOfInformation.MEGABYTES
+    _attr_suggested_unit_of_measurement = UnitOfInformation.GIGABYTES
+    _attr_icon = "mdi:sd"
+
+    def __init__(
+        self,
+        coordinator: ProofCoordinator,
+        device_id: str,
+        key: str,
+        store: str,
+        field: str,
+    ) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_translation_key = key
+        self._attr_unique_id = f"{device_id}_{key}"
+        self._store = store
+        self._field = field
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the capacity, once the storage has been read."""
+        storage = self.coordinator.storage.get(self._device_id) or {}
+        return (storage.get(self._store) or {}).get(self._field)
 
 
 class ProofSelfCheckRunSensor(ProofEntity, SensorEntity):

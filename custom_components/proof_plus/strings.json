@@ -101,6 +101,15 @@
       },
       "self_check_run": {
         "name": "Self-check last run"
+      },
+      "sd_card_free": {
+        "name": "SD card free"
+      },
+      "sd_card_total": {
+        "name": "SD card capacity"
+      },
+      "internal_free": {
+        "name": "Internal storage free"
       }
     },
     "binary_sensor": {

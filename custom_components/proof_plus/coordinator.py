@@ -72,6 +72,8 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.alerts: dict[str, bool] = {}
         # Last self-check result per dashcam.
         self.self_check: dict[str, dict[str, Any]] = {}
+        # Last known storage figures per dashcam (megabytes).
+        self.storage: dict[str, dict[str, Any]] = {}
         # How many recordings each album folder lists.
         self.album_limit = entry.options.get(CONF_ALBUM_LIMIT, DEFAULT_ALBUM_LIMIT)
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -90,6 +92,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             if "props" in stored or "self_check" in stored:
                 self.device_props = stored.get("props") or {}
                 self.self_check = stored.get("self_check") or {}
+                self.storage = stored.get("storage") or {}
             else:
                 self.device_props = stored
 
@@ -114,14 +117,22 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         items = {
             "sim_card": ok_if(bool(stats.get("iccid")) if stats else None),
             "gsm_signal": ok_if(signal >= GSM_WEAK_DBM if signal is not None else None),
-            "server": ok_if(device.get("online")),
+            # Whether the Proof cloud is reachable, which is what the app
+            # checks here. Whether the dashcam itself is currently connected
+            # is a separate thing, reported by the Online sensor: a parked
+            # camera drops its connection and that is not a fault.
+            "server": ok_if(self.last_update_success),
             # The app shows these two as failing while the car is parked, since
             # the dashcam cannot report either with the ignition off.
             "ignition": ok_if(ignition_on),
             "positioning": ok_if(bool(gps.get("valid")) and ignition_on),
-            # Reading this needs a live session to the dashcam, which is slow
-            # and uses its mobile data, so it is not part of the routine check.
-            "sd_card": "unknown",
+            # Only known once the storage has been read, which needs a live
+            # session to the dashcam; the button does that.
+            "sd_card": ok_if(
+                (self.storage.get(device_id, {}).get("external_sd") or {}).get("exist")
+                if self.storage.get(device_id)
+                else None
+            ),
         }
         result = {
             "run": dt_util.utcnow().isoformat(),
@@ -144,7 +155,12 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     def _save_props(self) -> None:
         """Persist the settings and self-check results across restarts."""
         self._store.async_delay_save(
-            lambda: {"props": self.device_props, "self_check": self.self_check}, 2
+            lambda: {
+                "props": self.device_props,
+                "self_check": self.self_check,
+                "storage": self.storage,
+            },
+            2,
         )
 
     async def async_get_device_props(
@@ -179,6 +195,23 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             self._save_props()
             self.async_update_listeners()
         return True
+
+    async def async_get_storage(
+        self, hass: HomeAssistant, device_id: str
+    ) -> dict[str, Any] | None:
+        """Read the dashcam's internal and SD-card capacity.
+
+        This needs a live session to the camera, so it is only done on request.
+        """
+        client = await self.live_session(hass, device_id).async_acquire(0)
+        if client is None:
+            return None
+        storage = await client.async_get_storage()
+        if storage:
+            self.storage[device_id] = storage
+            self._save_props()
+            self.async_update_listeners()
+        return storage
 
     async def async_set_alert(self, key: str, enabled: bool) -> bool:
         """Turn one account alert on or off."""

@@ -78,13 +78,17 @@ class ProofRefreshSettingsButton(ProofEntity, ButtonEntity):
         self._attr_unique_id = f"{device_id}_refresh_settings"
 
     async def async_press(self) -> None:
-        """Connect to the dashcam and read its settings."""
+        """Connect to the dashcam and read its settings and storage.
+
+        Both come over the same session, so read them together rather than
+        waking the camera twice.
+        """
         if await self.coordinator.async_get_device_props(
             self.hass, self._device_id
         ) is None:
-            _LOGGER.warning(
-                "Could not read the settings from %s", self._device_id
-            )
+            _LOGGER.warning("Could not read the settings from %s", self._device_id)
+            return
+        await self.coordinator.async_get_storage(self.hass, self._device_id)
 
 
 class ProofSelfCheckButton(ProofEntity, ButtonEntity):

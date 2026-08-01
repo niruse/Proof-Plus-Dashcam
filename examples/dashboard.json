@@ -469,6 +469,21 @@
             },
             {
               "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_sd_card_free",
+              "name": "SD card free"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_sd_card_capacity",
+              "name": "SD card capacity"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_internal_storage_free",
+              "name": "Internal free"
+            },
+            {
+              "type": "tile",
               "entity": "sensor.YOUR_DEVICE_last_seen",
               "name": "Last seen"
             }

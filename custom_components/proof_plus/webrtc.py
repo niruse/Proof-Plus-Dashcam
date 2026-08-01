@@ -91,6 +91,9 @@ class ProofWebRTCClient:
         self._data_channel_open = asyncio.Event()
         self._rpc_id = 0
         self._rpc_waiters: dict[str, asyncio.Future] = {}
+        # Unsolicited reports the device pushes, keyed by their "type".
+        self.reports: dict[str, Any] = {}
+        self._report_waiters: dict[str, asyncio.Event] = {}
 
     @property
     def latest_frame(self) -> VideoFrame | None:
@@ -151,6 +154,12 @@ class ProofWebRTCClient:
             waiter = self._rpc_waiters.pop(str(reply.get("msgid")), None)
             if waiter is not None and not waiter.done():
                 waiter.set_result(reply)
+                return
+            # The device also pushes unsolicited reports, keyed by type.
+            if (kind := reply.get("type")) :
+                self.reports[kind] = reply.get("data")
+                if (event := self._report_waiters.pop(kind, None)) is not None:
+                    event.set()
 
         self._pc.addTransceiver("video", direction="recvonly")
         self._pc.addTransceiver("audio", direction="recvonly")
@@ -236,6 +245,42 @@ class ProofWebRTCClient:
             self._rpc_waiters.pop(msgid, None)
             _LOGGER.warning("No reply to %s from %s", name, self._device_id)
             return None
+
+    async def async_request_report(
+        self, request: str, report: str, timeout: float = 30
+    ) -> dict[str, Any] | None:
+        """Ask the device to report something and wait for it to arrive.
+
+        Unlike the RPCs, these are plain ``{"type": ...}`` messages and the
+        device answers with its own ``{"type": ..., "data": ...}`` push.
+        """
+        try:
+            await asyncio.wait_for(
+                self._data_channel_open.wait(), timeout=DATA_CHANNEL_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Control channel unavailable for %s", self._device_id)
+            return None
+        event = self._report_waiters.setdefault(report, asyncio.Event())
+        self._send_data({"type": request})
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            self._report_waiters.pop(report, None)
+            _LOGGER.debug("No %s from %s", report, self._device_id)
+            return None
+        return self.reports.get(report)
+
+    async def async_get_storage(self) -> dict[str, Any] | None:
+        """Return the dashcam's internal and SD-card capacity, in megabytes."""
+        data = await self.async_request_report("report_SDCardInfo", "dev_sdcard_info")
+        self._send_data({"type": "stop_SDCardInfo"})
+        return data
+
+    def _send_data(self, payload: dict[str, Any]) -> None:
+        """Send a plain data-channel message (not an RPC)."""
+        if self._data_channel is not None and self._data_channel.readyState == "open":
+            self._data_channel.send(json.dumps(payload))
 
     async def async_get_props(self) -> dict[str, Any] | None:
         """Read the dashcam's settings."""
