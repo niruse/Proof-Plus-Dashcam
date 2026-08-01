@@ -52,6 +52,14 @@ class ProofInvalidCredentials(ProofError):
     """The phone number or password was rejected."""
 
 
+class ProofSigningRequired(ProofError):
+    """The endpoint needs the app's `x-sign` request signature, which we cannot produce.
+
+    Re-authenticating does not help: the signature is checked before the token,
+    so a brand new session fails in exactly the same way.
+    """
+
+
 class ProofInvalidPhone(ProofError):
     """The Proof cloud does not accept this phone number."""
 
@@ -214,11 +222,13 @@ class ProofApiClient:
 
         if isinstance(payload, dict) and payload.get("success") is False:
             message = str(payload.get("data"))
-            # The v5 endpoints answer with an internal error rather than a 401
-            # when the session is no longer accepted; treat that as auth failure
-            # so Home Assistant asks for a new SMS login instead of retrying.
+            # An unsigned request fails inside the server before the token is
+            # looked at, so this is not an authentication problem.
             if "System error" in message:
-                raise ProofAuthError(f"Proof rejected the session on {path}: {message}")
+                raise ProofSigningRequired(
+                    f"{path} requires the app's x-sign request signature "
+                    f"(server said: {message})"
+                )
             raise ProofError(f"Proof API error on {path}: {message}")
         return payload
 
