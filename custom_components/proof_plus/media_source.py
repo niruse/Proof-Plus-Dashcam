@@ -6,10 +6,11 @@ from the Proof file server when opened.
 
 Identifiers are ``|``-joined and disambiguated purely by segment count:
 
-* ``""``                                   → root, lists devices
-* ``entry_id|device_id``                   → an event-type folder listing
-* ``entry_id|device_id|type``              → the clips of one event type
-* ``entry_id|device_id|kind|fid``          → a single clip (resolve only)
+* ``""``                                    → root, lists devices
+* ``entry_id|device_id``                    → the event types
+* ``entry_id|device_id|type``               → Videos / Images
+* ``entry_id|device_id|type|kind``          → the recordings themselves
+* ``entry_id|device_id|clip|kind|fid``      → a single recording (resolve only)
 
 The file id is already percent-encoded and contains no ``|``, so it is safe as
 the final segment.
@@ -32,6 +33,8 @@ from .coordinator import ProofCoordinator
 
 _SEP = "|"
 _EVENT_TYPES = {"shake": "Impact events", "coll": "Collisions"}
+_KINDS = {"video": "Videos", "image": "Images"}
+_CAMERAS = {0: "Front", 1: "Rear"}
 
 
 async def async_get_media_source(hass: HomeAssistant) -> MediaSource:
@@ -58,11 +61,11 @@ class ProofMediaSource(MediaSource):
         return result
 
     async def async_resolve_media(self, item: MediaSourceItem) -> PlayMedia:
-        """Resolve a clip identifier to a downloadable URL."""
+        """Resolve a recording identifier to a downloadable URL."""
         parts = (item.identifier or "").split(_SEP)
-        if len(parts) != 4:
+        if len(parts) != 5 or parts[2] != "clip":
             raise Unresolvable(f"Unknown Proof media identifier: {item.identifier}")
-        entry_id, _device_id, kind, fid = parts
+        entry_id, _device_id, _marker, kind, fid = parts
         coordinator = self._coordinators().get(entry_id)
         if coordinator is None:
             raise Unresolvable("This Proof entry no longer allows media browsing")
@@ -79,8 +82,42 @@ class ProofMediaSource(MediaSource):
         if len(parts) == 2:
             return self._browse_device(coordinators, parts[0], parts[1])
         if len(parts) == 3:
-            return await self._browse_clips(coordinators, parts[0], parts[1], parts[2])
+            return self._browse_kinds(coordinators, parts[0], parts[1], parts[2])
+        if len(parts) == 4:
+            return await self._browse_clips(
+                coordinators, parts[0], parts[1], parts[2], parts[3]
+            )
         raise Unresolvable(f"Cannot browse {item.identifier}")
+
+    def _browse_kinds(
+        self,
+        coordinators: dict[str, ProofCoordinator],
+        entry_id: str,
+        device_id: str,
+        event_type: str,
+    ) -> BrowseMediaSource:
+        """Offer Videos and Images separately, so each is easy to find."""
+        if entry_id not in coordinators:
+            raise Unresolvable("This Proof entry no longer allows media browsing")
+        children = [
+            BrowseMediaSource(
+                domain=DOMAIN,
+                identifier=f"{entry_id}{_SEP}{device_id}{_SEP}{event_type}{_SEP}{kind}",
+                media_class=MediaClass.DIRECTORY,
+                media_content_type=(
+                    MediaType.VIDEO if kind == "video" else MediaType.IMAGE
+                ),
+                title=title,
+                can_play=False,
+                can_expand=True,
+            )
+            for kind, title in _KINDS.items()
+        ]
+        return self._folder(
+            f"{entry_id}{_SEP}{device_id}{_SEP}{event_type}",
+            _EVENT_TYPES.get(event_type, event_type),
+            children,
+        )
 
     def _folder(
         self, identifier: str | None, title: str, children: list[BrowseMediaSource]
@@ -143,43 +180,46 @@ class ProofMediaSource(MediaSource):
         entry_id: str,
         device_id: str,
         event_type: str,
+        kind: str,
     ) -> BrowseMediaSource:
         coordinator = coordinators.get(entry_id)
         if coordinator is None:
             raise Unresolvable("This Proof entry no longer allows media browsing")
         files = await coordinator.client.async_get_files(
-            device_id, event_type, size=50
+            device_id, event_type, size=100
         )
         children = [
             clip
             for f in files
-            if (clip := self._clip(entry_id, device_id, f)) is not None
+            if (f.get("ftype") == kind)
+            and (clip := self._clip(entry_id, device_id, kind, f)) is not None
         ]
         return self._folder(
-            f"{entry_id}{_SEP}{device_id}{_SEP}{event_type}",
-            _EVENT_TYPES.get(event_type, event_type),
+            f"{entry_id}{_SEP}{device_id}{_SEP}{event_type}{_SEP}{kind}",
+            f"{_EVENT_TYPES.get(event_type, event_type)} – {_KINDS.get(kind, kind)}",
             children,
         )
 
     def _clip(
-        self, entry_id: str, device_id: str, f: dict
+        self, entry_id: str, device_id: str, kind: str, f: dict
     ) -> BrowseMediaSource | None:
         fid = f.get("fid")
         if not fid:
             return None
-        is_video = f.get("ftype") == "video"
-        title = fid
+        is_video = kind == "video"
+        # Each event stores one recording per camera, so name them apart.
+        camera = _CAMERAS.get(f.get("camid") or 0, f"Camera {f.get('camid')}")
+        when = fid
         if (event_ms := f.get("time")) is not None:
-            title = dt_util.as_local(
+            when = dt_util.as_local(
                 dt_util.utc_from_timestamp(event_ms / 1000)
             ).strftime("%Y-%m-%d %H:%M:%S")
-        kind = "video" if is_video else "image"
         return BrowseMediaSource(
             domain=DOMAIN,
-            identifier=f"{entry_id}{_SEP}{device_id}{_SEP}{kind}{_SEP}{fid}",
+            identifier=f"{entry_id}{_SEP}{device_id}{_SEP}clip{_SEP}{kind}{_SEP}{fid}",
             media_class=MediaClass.VIDEO if is_video else MediaClass.IMAGE,
             media_content_type="video/mp4" if is_video else "image/jpeg",
-            title=title,
+            title=f"{when} · {camera}",
             can_play=True,
             can_expand=False,
         )
