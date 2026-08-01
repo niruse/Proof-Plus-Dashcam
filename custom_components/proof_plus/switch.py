@@ -70,16 +70,76 @@ SWITCHES: tuple[ProofSwitchDescription, ...] = (
 )
 
 
+# Which alerts the account receives. These live in the cloud rather than on the
+# dashcam, so unlike the settings above they are cheap to read and are polled.
+ALERTS: tuple[SwitchEntityDescription, ...] = (
+    SwitchEntityDescription(key="accmsgOn", translation_key="alert_acc",
+                            icon="mdi:key-variant", entity_category=EntityCategory.CONFIG),
+    SwitchEntityDescription(key="shakeOn", translation_key="alert_vibration",
+                            icon="mdi:vibrate", entity_category=EntityCategory.CONFIG),
+    SwitchEntityDescription(key="collOn", translation_key="alert_accident",
+                            icon="mdi:car-emergency", entity_category=EntityCategory.CONFIG),
+    SwitchEntityDescription(key="sosOn", translation_key="alert_share",
+                            icon="mdi:share-variant", entity_category=EntityCategory.CONFIG),
+    SwitchEntityDescription(key="neutralOn", translation_key="alert_idle",
+                            icon="mdi:timer-sand", entity_category=EntityCategory.CONFIG),
+    SwitchEntityDescription(key="fenceOn", translation_key="alert_geofence",
+                            icon="mdi:map-marker-radius", entity_category=EntityCategory.CONFIG),
+    SwitchEntityDescription(key="overSpeedOn", translation_key="alert_overspeed",
+                            icon="mdi:speedometer", entity_category=EntityCategory.CONFIG),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the setting switches for each dashcam."""
     coordinator: ProofCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
+    entities: list[SwitchEntity] = [
         ProofSettingSwitch(hass, coordinator, device_id, description)
         for device_id in coordinator.data
         for description in SWITCHES
-    )
+    ]
+    # The alert toggles belong to the account, not to a dashcam, so they are
+    # created once and attached to the first device.
+    if first_device := next(iter(coordinator.data), None):
+        entities.extend(
+            ProofAlertSwitch(coordinator, first_device, description)
+            for description in ALERTS
+        )
+    async_add_entities(entities)
+
+
+class ProofAlertSwitch(ProofEntity, SwitchEntity):
+    """One account alert (which events the Proof service notifies about)."""
+
+    def __init__(
+        self,
+        coordinator: ProofCoordinator,
+        device_id: str,
+        description: SwitchEntityDescription,
+    ) -> None:
+        super().__init__(coordinator, device_id)
+        self.entity_description = description
+        self._attr_unique_id = f"alert_{description.key}_{coordinator.client.uid}"
+
+    @property
+    def available(self) -> bool:
+        """Available once the account settings have been read."""
+        return super().available and self.entity_description.key in self.coordinator.alerts
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether this alert is enabled."""
+        return self.coordinator.alerts.get(self.entity_description.key)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable the alert."""
+        await self.coordinator.async_set_alert(self.entity_description.key, True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable the alert."""
+        await self.coordinator.async_set_alert(self.entity_description.key, False)
 
 
 class ProofSettingSwitch(ProofEntity, SwitchEntity):

@@ -299,6 +299,33 @@ class ProofApiClient:
             servers.append(entry)
         return servers
 
+    async def async_get_account_config(self) -> dict[str, Any]:
+        """Return the account's app configuration, including the alert toggles.
+
+        This is the same read the mobile app performs at startup: the empty
+        values leave the stored settings alone and the reply carries them back.
+        """
+        payload = await self._async_request(
+            "POST",
+            "/api/app/v5/user/config",
+            json={
+                "liveBase": "",
+                "iceinfo": "",
+                "mapType": "leaflet",
+                "collLevel": "",
+                "parkingLevel": "",
+                "streamType": "",
+            },
+        )
+        return payload.get("data", {})
+
+    async def async_set_alerts(self, alerts: dict[str, bool]) -> bool:
+        """Write the account's alert (message reception) toggles."""
+        payload = await self._async_request(
+            "POST", "/api/app/v5/user/attr", json={"msgctrl": alerts}
+        )
+        return bool(payload.get("success", True))
+
     async def async_wake_device(self, device_id: str) -> bool:
         """Ask the cloud to wake the dashcam so it reports a fresh position."""
         payload = await self._async_request(

@@ -47,6 +47,8 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         # Last known device settings per dashcam, read on demand over the
         # control channel (reading them requires connecting to the device).
         self.device_props: dict[str, dict[str, Any]] = {}
+        # Account-wide alert toggles (msgctrl); cheap to read, so polled.
+        self.alerts: dict[str, bool] = {}
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         super().__init__(
             hass,
@@ -86,6 +88,15 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             self.async_update_listeners()
         return True
 
+    async def async_set_alert(self, key: str, enabled: bool) -> bool:
+        """Turn one account alert on or off."""
+        alerts = {**self.alerts, key: enabled}
+        if not await self.client.async_set_alerts(alerts):
+            return False
+        self.alerts = alerts
+        self.async_update_listeners()
+        return True
+
     def live_session(self, hass: HomeAssistant, device_id: str) -> Any:
         """Return the shared live session for a dashcam, creating it on first use."""
         if device_id not in self._live_sessions:
@@ -108,9 +119,20 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             raise UpdateFailed("Proof returned no devices for this account")
 
         result = {dev["id"]: dev for dev in devices if "id" in dev}
+        await self._async_refresh_alerts()
         if self._fetch_events:
             await self._async_refresh_events(result)
         return result
+
+    async def _async_refresh_alerts(self) -> None:
+        """Read the account's alert toggles; a failure must not fail the update."""
+        try:
+            config = await self.client.async_get_account_config()
+        except ProofError as err:
+            _LOGGER.debug("Could not read the account settings: %s", err)
+            return
+        if isinstance(config.get("msgctrl"), dict):
+            self.alerts = config["msgctrl"]
 
     async def _async_refresh_events(self, devices: dict[str, dict[str, Any]]) -> None:
         """Fetch recent event metadata; failures here must not fail the update."""

@@ -90,7 +90,14 @@
       "motion_detection": { "name": "Motion detection" },
       "timelapse_parking": { "name": "Time-lapse parking recording" },
       "rear_camera": { "name": "Rear camera enabled" },
-      "wifi": { "name": "Wi-Fi" }
+      "wifi": { "name": "Wi-Fi" },
+      "alert_acc": { "name": "Alert: ignition" },
+      "alert_vibration": { "name": "Alert: vibration" },
+      "alert_accident": { "name": "Alert: accident" },
+      "alert_share": { "name": "Alert: share button" },
+      "alert_idle": { "name": "Alert: car idled" },
+      "alert_geofence": { "name": "Alert: geofence" },
+      "alert_overspeed": { "name": "Alert: overspeed" }
     },
     "number": {
       "volume": { "name": "Speaker volume" }
