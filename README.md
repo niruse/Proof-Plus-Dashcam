@@ -108,8 +108,14 @@ ignition and GPS from what the dashcam last reported, and records the result wit
 (`Self-check` and `Self-check last run`). It runs **daily** by default — change or disable that
 under **Configure**, or press **Run self-check** at any time.
 
+Signal is graded with the same bands the app uses (excellent down to −96 dBm, good to −104, then
+bad), and the result carries `gsm_quality` and each item as attributes. Like the app, ignition and
+positioning read as failing while the car is parked — but they do not count towards the overall
+result, since a parked car is not a fault.
+
 It reads only values that are polled anyway, so it costs nothing extra. The SD card is reported as
-*unknown*: the dashcam only answers that query while the ignition is on.
+*unknown*: reading it means opening a live session to the dashcam (slow, and it uses the camera's
+mobile data), which is why the app's own self-check takes a while.
 
 ## Notes
 

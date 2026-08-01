@@ -49,5 +49,11 @@ ATTRIBUTION = "Data provided by 2proof.co.il"
 # schedule and leaves the button.
 DEFAULT_SELFCHECK_INTERVAL = 24
 
-# The app warns that below this the device may lose its connection.
-GSM_WEAK_DBM = -100
+# The signal bands the app shows on its self-check screen. Anything from
+# "bad" down is treated as a problem.
+GSM_BANDS = (
+    (-96, "excellent"),
+    (-104, "good"),
+    (-113, "bad"),
+)
+GSM_WEAK_DBM = -104

@@ -183,7 +183,12 @@ class ProofSelfCheckSensor(ProofEntity, SensorEntity):
         result = self._result
         if not result:
             return {}
-        return {**result.get("items", {}), "problems": result.get("problems", [])}
+        return {
+            **result.get("items", {}),
+            "gsm_quality": result.get("gsm_quality"),
+            "gsm_signal_dbm": result.get("gsm_signal_dbm"),
+            "problems": result.get("problems", []),
+        }
 
 
 class ProofSelfCheckRunSensor(ProofEntity, SensorEntity):

@@ -21,10 +21,21 @@ from .const import (
     DEFAULT_ALBUM_LIMIT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    GSM_BANDS,
     GSM_WEAK_DBM,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _gsm_quality(signal: int | None) -> str | None:
+    """Describe a signal level using the bands the app shows."""
+    if signal is None:
+        return None
+    for floor, label in GSM_BANDS:
+        if signal >= floor:
+            return label
+    return "very_poor"
 
 
 class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
@@ -99,19 +110,31 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             return "unknown" if value is None else ("ok" if value else "problem")
 
         signal = status_stats.get("sig")
+        ignition_on = bool(stats.get("acc"))
         items = {
             "sim_card": ok_if(bool(stats.get("iccid")) if stats else None),
-            "gsm_signal": ok_if(signal > GSM_WEAK_DBM if signal is not None else None),
+            "gsm_signal": ok_if(signal >= GSM_WEAK_DBM if signal is not None else None),
             "server": ok_if(device.get("online")),
-            "ignition": "ok" if stats.get("acc") is not None else "unknown",
-            # The device does not answer the SD-card query unless it is awake.
+            # The app shows these two as failing while the car is parked, since
+            # the dashcam cannot report either with the ignition off.
+            "ignition": ok_if(ignition_on),
+            "positioning": ok_if(bool(gps.get("valid")) and ignition_on),
+            # Reading this needs a live session to the dashcam, which is slow
+            # and uses its mobile data, so it is not part of the routine check.
             "sd_card": "unknown",
-            "positioning": ok_if(gps.get("valid")),
         }
         result = {
             "run": dt_util.utcnow().isoformat(),
             "items": items,
-            "problems": sorted(k for k, v in items.items() if v == "problem"),
+            "gsm_quality": _gsm_quality(signal),
+            "gsm_signal_dbm": signal,
+            # A parked car is not a fault, so only the items that point at a
+            # real problem decide the overall outcome.
+            "problems": sorted(
+                k
+                for k in ("sim_card", "gsm_signal", "server")
+                if items[k] == "problem"
+            ),
         }
         self.self_check[device_id] = result
         self._save_props()
