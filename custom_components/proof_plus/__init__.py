@@ -15,7 +15,9 @@ from .const import (
     CONF_ENABLE_LIVE,
     CONF_ENABLE_SNAPSHOT,
     CONF_REFRESH_TOKEN,
+    CONF_SELFCHECK_INTERVAL,
     CONF_SETTINGS_INTERVAL,
+    DEFAULT_SELFCHECK_INTERVAL,
     DEFAULT_SETTINGS_INTERVAL,
     DOMAIN,
     PLATFORMS,
@@ -90,6 +92,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_on_unload(
             async_call_later(hass, 60, _async_refresh_settings)
         )
+
+    # Run the self-check on a schedule. It only reads values already polled,
+    # so it costs nothing and defaults to daily.
+    check_hours = entry.options.get(
+        CONF_SELFCHECK_INTERVAL, DEFAULT_SELFCHECK_INTERVAL
+    )
+    if check_hours:
+
+        @callback
+        def _run_self_check(_now: datetime) -> None:
+            for device_id in coordinator.data:
+                coordinator.async_run_self_check(device_id)
+
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass, _run_self_check, timedelta(hours=check_hours)
+            )
+        )
+        entry.async_on_unload(async_call_later(hass, 30, _run_self_check))
     return True
 
 

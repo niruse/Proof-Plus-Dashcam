@@ -14,6 +14,7 @@ CONF_ENABLE_LIVE = "enable_live"
 CONF_LIVE_KEEPALIVE = "live_keepalive"
 CONF_SETTINGS_INTERVAL = "settings_interval"
 CONF_ALBUM_LIMIT = "album_limit"
+CONF_SELFCHECK_INTERVAL = "selfcheck_interval"
 
 DEFAULT_SCAN_INTERVAL = 30  # seconds; the device itself reports every ~30s
 MIN_SCAN_INTERVAL = 10
@@ -43,3 +44,10 @@ PLATFORMS = [
 ]
 
 ATTRIBUTION = "Data provided by 2proof.co.il"
+
+# How often to run the self-check, in hours. Daily by default; 0 disables the
+# schedule and leaves the button.
+DEFAULT_SELFCHECK_INTERVAL = 24
+
+# The app warns that below this the device may lose its connection.
+GSM_WEAK_DBM = -100

@@ -21,6 +21,13 @@ LOCATE = ButtonEntityDescription(
     icon="mdi:crosshairs-gps",
 )
 
+SELF_CHECK = ButtonEntityDescription(
+    key="self_check",
+    translation_key="self_check",
+    icon="mdi:clipboard-check",
+    entity_category=EntityCategory.DIAGNOSTIC,
+)
+
 REFRESH_SETTINGS = ButtonEntityDescription(
     key="refresh_settings",
     translation_key="refresh_settings",
@@ -38,6 +45,7 @@ async def async_setup_entry(
     for device_id in coordinator.data:
         entities.append(ProofLocateButton(hass, coordinator, device_id))
         entities.append(ProofRefreshSettingsButton(hass, coordinator, device_id))
+        entities.append(ProofSelfCheckButton(coordinator, device_id))
     async_add_entities(entities)
 
 
@@ -77,3 +85,16 @@ class ProofRefreshSettingsButton(ProofEntity, ButtonEntity):
             _LOGGER.warning(
                 "Could not read the settings from %s", self._device_id
             )
+
+
+class ProofSelfCheckButton(ProofEntity, ButtonEntity):
+    """Run the self-check now."""
+
+    def __init__(self, coordinator: ProofCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self.entity_description = SELF_CHECK
+        self._attr_unique_id = f"{device_id}_self_check"
+
+    async def async_press(self) -> None:
+        """Check the device's reported state and record the result."""
+        self.coordinator.async_run_self_check(self._device_id)

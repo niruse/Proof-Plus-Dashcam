@@ -36,11 +36,13 @@ from .const import (
     CONF_LIVE_KEEPALIVE,
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
+    CONF_SELFCHECK_INTERVAL,
     CONF_SETTINGS_INTERVAL,
     DEFAULT_ALBUM_LIMIT,
     DEFAULT_LIVE_KEEPALIVE,
     DEFAULT_SETTINGS_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SELFCHECK_INTERVAL,
     DOMAIN,
     MAX_ALBUM_LIMIT,
     MIN_SCAN_INTERVAL,
@@ -235,6 +237,12 @@ class ProofOptionsFlow(OptionsFlow):
                         CONF_SETTINGS_INTERVAL,
                         default=options.get(
                             CONF_SETTINGS_INTERVAL, DEFAULT_SETTINGS_INTERVAL
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=168)),
+                    vol.Required(
+                        CONF_SELFCHECK_INTERVAL,
+                        default=options.get(
+                            CONF_SELFCHECK_INTERVAL, DEFAULT_SELFCHECK_INTERVAL
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=168)),
                     vol.Required(

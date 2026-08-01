@@ -94,12 +94,22 @@ running until closed, which uses cellular data continuously).
 - **Live** — front and rear cameras, online/ignition status and a speed trend
 - **Location** — map with 24 h of history, plus speed, heading, altitude and odometer
 - **Media** — the latest event snapshot from each camera, and a link to the recordings
-- **Settings** — every dashcam setting, the account's alert toggles, diagnostics and a
-  **Self-check** panel mirroring the app's (SIM, signal, server, ignition, GPS)
+- **Settings** — every dashcam setting, the account's alert toggles, diagnostics and the
+  **Self-check** panel
 
 To use it: create a new dashboard, open its ⋮ menu → **Raw configuration editor**, paste the file
 in, and replace `YOUR_DEVICE` with your dashcam's id (the number in your entity names, e.g.
 `camera.1234567_live_view` → `1234567`).
+
+## Self-check
+
+A self-check mirrors the app's own screen: it judges the SIM, mobile signal, server connection,
+ignition and GPS from what the dashcam last reported, and records the result with a timestamp
+(`Self-check` and `Self-check last run`). It runs **daily** by default — change or disable that
+under **Configure**, or press **Run self-check** at any time.
+
+It reads only values that are polled anyway, so it costs nothing extra. The SD card is reported as
+*unknown*: the dashcam only answers that query while the ignition is on.
 
 ## Notes
 

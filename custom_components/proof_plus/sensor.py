@@ -141,11 +141,68 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors for every device on the account."""
     coordinator: ProofCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
+    entities: list[SensorEntity] = [
         ProofSensor(coordinator, device_id, description)
         for device_id in coordinator.data
         for description in SENSORS
-    )
+    ]
+    for device_id in coordinator.data:
+        entities.append(ProofSelfCheckSensor(coordinator, device_id))
+        entities.append(ProofSelfCheckRunSensor(coordinator, device_id))
+    async_add_entities(entities)
+
+
+class ProofSelfCheckSensor(ProofEntity, SensorEntity):
+    """The outcome of the last self-check."""
+
+    _attr_translation_key = "self_check"
+    _attr_icon = "mdi:clipboard-check"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["ok", "problem", "unknown"]
+
+    def __init__(self, coordinator: ProofCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_self_check"
+
+    @property
+    def _result(self) -> dict[str, Any]:
+        return self.coordinator.self_check.get(self._device_id) or {}
+
+    @property
+    def native_value(self) -> str | None:
+        """Return ok, problem, or unknown if it has never run."""
+        result = self._result
+        if not result:
+            return None
+        return "problem" if result.get("problems") else "ok"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose each checked item, like the app's self-check screen."""
+        result = self._result
+        if not result:
+            return {}
+        return {**result.get("items", {}), "problems": result.get("problems", [])}
+
+
+class ProofSelfCheckRunSensor(ProofEntity, SensorEntity):
+    """When the self-check last ran."""
+
+    _attr_translation_key = "self_check_run"
+    _attr_icon = "mdi:clock-check"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: ProofCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_self_check_run"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the time of the last run."""
+        run = (self.coordinator.self_check.get(self._device_id) or {}).get("run")
+        return dt_util.parse_datetime(run) if run else None
 
 
 class ProofSensor(ProofEntity, SensorEntity):

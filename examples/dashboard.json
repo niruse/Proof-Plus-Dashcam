@@ -485,6 +485,26 @@
               "heading_style": "title"
             },
             {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_self_check",
+              "name": "Result",
+              "color": "green"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_self_check_last_run",
+              "name": "Last run"
+            },
+            {
+              "type": "tile",
+              "entity": "button.YOUR_DEVICE_run_self_check",
+              "name": "Run now",
+              "tap_action": {
+                "action": "toggle"
+              },
+              "color": "cyan"
+            },
+            {
               "type": "entities",
               "entities": [
                 {

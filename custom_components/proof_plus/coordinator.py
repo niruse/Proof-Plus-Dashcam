@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import ProofApiClient, ProofAuthError, ProofError
 from .const import (
@@ -20,6 +21,7 @@ from .const import (
     DEFAULT_ALBUM_LIMIT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    GSM_WEAK_DBM,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,6 +59,8 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         )
         # Account-wide alert toggles (msgctrl); cheap to read, so polled.
         self.alerts: dict[str, bool] = {}
+        # Last self-check result per dashcam.
+        self.self_check: dict[str, dict[str, Any]] = {}
         # How many recordings each album folder lists.
         self.album_limit = entry.options.get(CONF_ALBUM_LIMIT, DEFAULT_ALBUM_LIMIT)
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -69,13 +73,56 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         )
 
     async def async_load_stored_props(self) -> None:
-        """Restore the settings read during a previous run."""
+        """Restore the settings and self-check results from a previous run."""
         if isinstance(stored := await self._store.async_load(), dict):
-            self.device_props = stored
+            # Older versions stored only the settings, keyed by device id.
+            if "props" in stored or "self_check" in stored:
+                self.device_props = stored.get("props") or {}
+                self.self_check = stored.get("self_check") or {}
+            else:
+                self.device_props = stored
+
+    def async_run_self_check(self, device_id: str) -> dict[str, Any]:
+        """Check the things the app's self-check screen reports on.
+
+        The dashcam only answers direct queries while the ignition is on, so
+        this judges the values it last reported to the cloud instead. Each item
+        is "ok", "problem" or "unknown".
+        """
+        device = self.data.get(device_id) or {}
+        stats = device.get("stats") or {}
+        status = device.get("status") or {}
+        status_stats = status.get("stats") or {}
+        gps = status.get("gps") or {}
+
+        def ok_if(value: bool | None) -> str:
+            return "unknown" if value is None else ("ok" if value else "problem")
+
+        signal = status_stats.get("sig")
+        items = {
+            "sim_card": ok_if(bool(stats.get("iccid")) if stats else None),
+            "gsm_signal": ok_if(signal > GSM_WEAK_DBM if signal is not None else None),
+            "server": ok_if(device.get("online")),
+            "ignition": "ok" if stats.get("acc") is not None else "unknown",
+            # The device does not answer the SD-card query unless it is awake.
+            "sd_card": "unknown",
+            "positioning": ok_if(gps.get("valid")),
+        }
+        result = {
+            "run": dt_util.utcnow().isoformat(),
+            "items": items,
+            "problems": sorted(k for k, v in items.items() if v == "problem"),
+        }
+        self.self_check[device_id] = result
+        self._save_props()
+        self.async_update_listeners()
+        return result
 
     def _save_props(self) -> None:
-        """Persist the settings so they survive a restart."""
-        self._store.async_delay_save(lambda: self.device_props, 2)
+        """Persist the settings and self-check results across restarts."""
+        self._store.async_delay_save(
+            lambda: {"props": self.device_props, "self_check": self.self_check}, 2
+        )
 
     async def async_get_device_props(
         self, hass: HomeAssistant, device_id: str
