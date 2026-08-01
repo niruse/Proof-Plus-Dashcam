@@ -188,15 +188,20 @@ class ProofMediaSource(MediaSource):
         coordinator = coordinators.get(entry_id)
         if coordinator is None:
             raise Unresolvable("This Proof entry no longer allows media browsing")
+        limit = coordinator.album_limit
+        # Every event stores an image and a clip for each camera, so ask for a
+        # few times the wanted count to end up with `limit` of this kind.
         files = await coordinator.client.async_get_files(
-            device_id, _API_TYPES.get(event_type, event_type), size=100
+            device_id,
+            _API_TYPES.get(event_type, event_type),
+            size=min(limit * 4, 100),
         )
         children = [
             clip
             for f in files
             if (f.get("ftype") == kind)
             and (clip := self._clip(entry_id, device_id, kind, f)) is not None
-        ]
+        ][:limit]
         return self._folder(
             f"{entry_id}{_SEP}{device_id}{_SEP}{event_type}{_SEP}{kind}",
             f"{_EVENT_TYPES.get(event_type, event_type)} – {_KINDS.get(kind, kind)}",

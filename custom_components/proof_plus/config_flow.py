@@ -28,6 +28,7 @@ from .api import (
     ProofInvalidPhone,
 )
 from .const import (
+    CONF_ALBUM_LIMIT,
     CONF_CODE,
     CONF_ENABLE_LIVE,
     CONF_ENABLE_MEDIA_BROWSER,
@@ -36,10 +37,12 @@ from .const import (
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
     CONF_SETTINGS_INTERVAL,
+    DEFAULT_ALBUM_LIMIT,
     DEFAULT_LIVE_KEEPALIVE,
     DEFAULT_SETTINGS_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MAX_ALBUM_LIMIT,
     MIN_SCAN_INTERVAL,
 )
 
@@ -234,6 +237,12 @@ class ProofOptionsFlow(OptionsFlow):
                             CONF_SETTINGS_INTERVAL, DEFAULT_SETTINGS_INTERVAL
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=168)),
+                    vol.Required(
+                        CONF_ALBUM_LIMIT,
+                        default=options.get(CONF_ALBUM_LIMIT, DEFAULT_ALBUM_LIMIT),
+                    ): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=MAX_ALBUM_LIMIT)
+                    ),
                 }
             ),
         )

@@ -13,9 +13,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import ProofApiClient, ProofAuthError, ProofError
 from .const import (
+    CONF_ALBUM_LIMIT,
     CONF_ENABLE_MEDIA_BROWSER,
     CONF_ENABLE_SNAPSHOT,
     CONF_SCAN_INTERVAL,
+    DEFAULT_ALBUM_LIMIT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
@@ -55,6 +57,8 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         )
         # Account-wide alert toggles (msgctrl); cheap to read, so polled.
         self.alerts: dict[str, bool] = {}
+        # How many recordings each album folder lists.
+        self.album_limit = entry.options.get(CONF_ALBUM_LIMIT, DEFAULT_ALBUM_LIMIT)
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         super().__init__(
             hass,

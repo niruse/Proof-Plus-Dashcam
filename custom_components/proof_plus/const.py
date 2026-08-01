@@ -13,6 +13,7 @@ CONF_ENABLE_MEDIA_BROWSER = "enable_media_browser"
 CONF_ENABLE_LIVE = "enable_live"
 CONF_LIVE_KEEPALIVE = "live_keepalive"
 CONF_SETTINGS_INTERVAL = "settings_interval"
+CONF_ALBUM_LIMIT = "album_limit"
 
 DEFAULT_SCAN_INTERVAL = 30  # seconds; the device itself reports every ~30s
 MIN_SCAN_INTERVAL = 10
@@ -24,6 +25,11 @@ DEFAULT_LIVE_KEEPALIVE = 10
 # How often to read the dashcam's own settings, in hours. Each read connects to
 # the device, so this is off (0) unless the user asks for it.
 DEFAULT_SETTINGS_INTERVAL = 0
+
+# How many recordings each album folder lists. Kept small so the browser shows
+# the recent ones instead of thousands of past events.
+DEFAULT_ALBUM_LIMIT = 5
+MAX_ALBUM_LIMIT = 100
 
 # Always-on platforms; image/camera are added only when their option is enabled.
 PLATFORMS = [

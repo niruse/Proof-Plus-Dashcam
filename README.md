@@ -33,8 +33,10 @@ unless you turn it on:
 - **Event snapshots** — adds an `image` entity per dashcam showing the most recent impact/event
   snapshot, with the event's GPS location. The image is only downloaded when Home Assistant
   renders it.
-- **Media browser** — lists recorded impact and collision clips (image and video) under
-  **Media → Proof Plus**, streamed straight from the Proof file server on demand.
+- **Media browser** — lists the recordings under **Media → Proof Plus**: the whole **Cloud album**
+  plus **Impact events** and **Collisions**, each split into **Videos** and **Images** and labelled
+  by time and camera. Nothing is downloaded; a recording is fetched from the cloud only when you
+  open it, and each folder lists the newest few (5 by default, configurable).
 - **Live view** — see the note under [Live view](#live-view) below.
 
 ## Installation
