@@ -148,6 +148,7 @@ async def async_setup_entry(
     ]
     for device_id in coordinator.data:
         entities.append(ProofSelfCheckSensor(coordinator, device_id))
+        entities.append(ProofMessageSensor(coordinator, device_id))
         entities.append(ProofSelfCheckRunSensor(coordinator, device_id))
         for key, store, field in (
             ("sd_card_free", "external_sd", "free"),
@@ -197,6 +198,53 @@ class ProofSelfCheckSensor(ProofEntity, SensorEntity):
             "gsm_signal_dbm": result.get("gsm_signal_dbm"),
             "problems": result.get("problems", []),
         }
+
+
+class ProofMessageSensor(ProofEntity, SensorEntity):
+    """The latest alert the cloud pushed, with the recent ones attached."""
+
+    _attr_translation_key = "last_message"
+    _attr_icon = "mdi:message-alert"
+
+    def __init__(self, coordinator: ProofCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_last_message"
+
+    @property
+    def _messages(self) -> list[dict[str, Any]]:
+        return self.coordinator.messages.get(self._device_id) or []
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the newest alert's headline."""
+        if not self._messages:
+            return None
+        newest = self._messages[0]
+        return (newest.get("topic") or newest.get("text") or "")[:255] or None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the newest alert's detail and a short history."""
+        listener = self.coordinator.message_listener
+        attrs: dict[str, Any] = {
+            # Alerts only arrive while this is true; useful for spotting a
+            # dropped connection when no message has come in for a while.
+            "listening": bool(listener and listener.connected),
+        }
+        if not self._messages:
+            return attrs
+        newest = self._messages[0]
+        attrs.update(
+            {
+                "text": newest.get("text"),
+                "type": newest.get("type"),
+                "time": newest.get("time"),
+                "latitude": newest.get("latitude"),
+                "longitude": newest.get("longitude"),
+                "messages": self._messages[:20],
+            }
+        )
+        return attrs
 
 
 class ProofStorageSensor(ProofEntity, SensorEntity):

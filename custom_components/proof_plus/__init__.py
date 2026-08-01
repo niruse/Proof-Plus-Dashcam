@@ -23,6 +23,7 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import ProofCoordinator
+from .messages import ProofMessageListener
 
 
 def _platforms_for(entry: ConfigEntry) -> list[str]:
@@ -73,6 +74,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, coordinator.platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+    # Listen for the alerts the cloud pushes (the app's Messages screen). This
+    # is a link to the cloud, not to the camera, so it costs the dashcam
+    # nothing.
+    messages = ProofMessageListener(hass, coordinator)
+    messages.start()
+    coordinator.message_listener = messages
+    entry.async_on_unload(
+        lambda: hass.async_create_task(messages.async_stop())
+    )
 
     # Optionally re-read the dashcam's settings on a schedule. Each read
     # connects to the device, so this is off unless the user asks for it.

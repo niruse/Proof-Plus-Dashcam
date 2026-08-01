@@ -22,6 +22,7 @@ Per dashcam on your account:
 | `sensor` Device temperature | Internal device temperature (°C) |
 | `sensor` GSM signal | Cellular signal strength (dBm) |
 | `sensor` Last seen | Timestamp of the last report |
+| `sensor` Last message | The newest alert the cloud pushed, with the recent ones as attributes |
 
 Redacted diagnostics are available from the integration page for troubleshooting.
 
@@ -89,18 +90,45 @@ running until closed, which uses cellular data continuously).
 
 ## Example dashboard
 
-`examples/dashboard.json` is a complete dashboard laid out like the mobile app, with four tabs:
+`examples/dashboard.json` is a complete dashboard laid out like the mobile app, with five tabs:
 
 - **Live** — front and rear cameras, online/ignition status and a speed trend
 - **Location** — map with 24 h of history, plus speed, heading, altitude and odometer
 - **Media** — a grid of recent event snapshots to tap for the full picture and its details,
   plus the latest from each camera and a link to the recordings
+- **Messages** — the alert feed, newest first, with each alert's time
 - **Settings** — every dashcam setting, the account's alert toggles, diagnostics and the
   **Self-check** panel
 
 To use it: create a new dashboard, open its ⋮ menu → **Raw configuration editor**, paste the file
 in, and replace `YOUR_DEVICE` with your dashcam's id (the number in your entity names, e.g.
 `camera.1234567_live_view` → `1234567`).
+
+## Messages
+
+The app's **Messages** screen is not an API you can query — the cloud pushes each alert down a
+WebSocket as it happens. The integration keeps that socket open and records what arrives in
+`sensor.<device>_last_message`: the state is the newest alert's headline, and the recent ones
+(up to 50) are kept in its `messages` attribute for the dashboard to list.
+
+Because there is no history endpoint, the list starts empty and fills from the moment you add
+the integration; it will not show alerts your phone received earlier. Which alerts you get is
+controlled by the **Alerts** switches (ignition, vibration, collision, share button, geofence,
+over-speed), the same account settings the app uses.
+
+Every alert also fires a `proof_plus_message` event on the Home Assistant bus, so you can trigger
+automations on one directly:
+
+```yaml
+trigger:
+  - platform: event
+    event_type: proof_plus_message
+    event_data:
+      type: coll
+```
+
+The socket carries no video and never wakes the dashcam — it is a link between Home Assistant and
+the cloud. The sensor's `listening` attribute shows whether it is currently connected.
 
 ## Self-check
 

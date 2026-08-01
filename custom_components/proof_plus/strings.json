@@ -112,6 +112,9 @@
       },
       "internal_free": {
         "name": "Internal storage free"
+      },
+      "last_message": {
+        "name": "Last message"
       }
     },
     "binary_sensor": {

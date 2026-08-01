@@ -320,6 +320,51 @@
       ]
     },
     {
+      "title": "Messages",
+      "path": "messages",
+      "icon": "mdi:message-text",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Latest",
+              "icon": "mdi:message-alert",
+              "heading_style": "title"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.YOUR_DEVICE_last_message",
+              "name": "Latest alert"
+            },
+            {
+              "type": "markdown",
+              "content": "Alerts arrive the moment the cloud sends them, so this list fills up from the day the integration was added rather than showing the app's older history. Choose which kinds you receive under **Settings > Alerts**."
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "column_span": 2,
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "History",
+              "icon": "mdi:history",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "content": "{% set alerts = state_attr(\"sensor.YOUR_DEVICE_last_message\", \"messages\") %}{% if alerts %}{% for a in alerts %}### {{ a.topic }}\n{{ a.text }}\n\n<font color=\"#888\">{{ as_timestamp(a.time) | timestamp_custom(\"%-d %b %Y, %H:%M\") }}</font>\n\n---\n{% endfor %}{% else %}No alerts yet. They arrive as they happen — ignition on and off, vibration, collision, the share button, geofence and over-speed — for whichever kinds are switched on under **Settings > Alerts**.{% endif %}"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "title": "Settings",
       "path": "settings",
       "icon": "mdi:cog",
@@ -627,7 +672,7 @@
             },
             {
               "type": "markdown",
-              "content": "Parked, the dashcam stops reporting to the cloud, so these show its last report \u2014 see **Last seen**. It still answers when asked: **Refresh settings** wakes it to read the settings and card. Ignition and positioning read as off while parked, which is normal and is not counted as a fault."
+              "content": "Parked, the dashcam stops reporting to the cloud, so these show its last report — see **Last seen**. It still answers when asked: **Refresh settings** wakes it to read the settings and card. Ignition and positioning read as off while parked, which is normal and is not counted as a fault."
             }
           ]
         }

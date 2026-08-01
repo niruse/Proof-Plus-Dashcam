@@ -74,6 +74,9 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.self_check: dict[str, dict[str, Any]] = {}
         # Last known storage figures per dashcam (megabytes).
         self.storage: dict[str, dict[str, Any]] = {}
+        # Alerts the cloud has pushed, newest first, per dashcam.
+        self.messages: dict[str, list[dict[str, Any]]] = {}
+        self.message_listener: Any = None
         # How many recordings each album folder lists.
         self.album_limit = entry.options.get(CONF_ALBUM_LIMIT, DEFAULT_ALBUM_LIMIT)
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -93,6 +96,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 self.device_props = stored.get("props") or {}
                 self.self_check = stored.get("self_check") or {}
                 self.storage = stored.get("storage") or {}
+                self.messages = stored.get("messages") or {}
             else:
                 self.device_props = stored
 
@@ -152,6 +156,10 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.async_update_listeners()
         return result
 
+    def save_state(self) -> None:
+        """Persist everything that should survive a restart."""
+        self._save_props()
+
     def _save_props(self) -> None:
         """Persist the settings and self-check results across restarts."""
         self._store.async_delay_save(
@@ -159,6 +167,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 "props": self.device_props,
                 "self_check": self.self_check,
                 "storage": self.storage,
+                "messages": self.messages,
             },
             2,
         )
