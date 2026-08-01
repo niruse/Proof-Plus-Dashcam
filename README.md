@@ -93,7 +93,8 @@ running until closed, which uses cellular data continuously).
 
 - **Live** — front and rear cameras, online/ignition status and a speed trend
 - **Location** — map with 24 h of history, plus speed, heading, altitude and odometer
-- **Media** — the latest event snapshot from each camera, and a link to the recordings
+- **Media** — a grid of recent event snapshots to tap for the full picture and its details,
+  plus the latest from each camera and a link to the recordings
 - **Settings** — every dashcam setting, the account's alert toggles, diagnostics and the
   **Self-check** panel
 

@@ -217,6 +217,83 @@
         },
         {
           "type": "grid",
+          "column_span": 2,
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Recent events",
+              "icon": "mdi:view-grid",
+              "heading_style": "title"
+            },
+            {
+              "type": "grid",
+              "columns": 3,
+              "square": true,
+              "cards": [
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_event_1",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                },
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_event_2",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                },
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_event_3",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                },
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_event_4",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                },
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_event_5",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                },
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_event_6",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "content": "Newest first. Tap a picture for the full image with its time, camera and location."
+            }
+          ]
+        },
+        {
+          "type": "grid",
           "cards": [
             {
               "type": "heading",

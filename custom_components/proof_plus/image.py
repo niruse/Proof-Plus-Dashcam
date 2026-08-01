@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import CONF_EVENT_IMAGES, DEFAULT_EVENT_IMAGES, DOMAIN
 from .coordinator import ProofCoordinator
 from .entity import ProofEntity
 
@@ -30,12 +30,94 @@ async def async_setup_entry(
 ) -> None:
     """Set up a latest-snapshot image for each camera on each device."""
     coordinator: ProofCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
+    entities: list[ImageEntity] = [
         ProofSnapshotImage(hass, coordinator, device_id, index, count)
         for device_id, device in coordinator.data.items()
         for count in (_camera_count(device),)
         for index in range(count)
+    ]
+    # A handful of recent event snapshots, so a dashboard can lay them out as
+    # a grid of thumbnails that open full screen with their details.
+    recent = entry.options.get(CONF_EVENT_IMAGES, DEFAULT_EVENT_IMAGES)
+    entities.extend(
+        ProofEventImage(hass, coordinator, device_id, position)
+        for device_id in coordinator.data
+        for position in range(recent)
     )
+    async_add_entities(entities)
+
+
+class ProofEventImage(ProofEntity, ImageEntity):
+    """One of the most recent event snapshots, newest first."""
+
+    _attr_entity_registry_enabled_default = True
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: ProofCoordinator,
+        device_id: str,
+        position: int,
+    ) -> None:
+        ProofEntity.__init__(self, coordinator, device_id)
+        ImageEntity.__init__(self, hass)
+        self._position = position
+        self._attr_name = f"Event {position + 1}"
+        self._attr_unique_id = f"{device_id}_event_{position + 1}"
+        self._fid: str | None = None
+        self._event: dict[str, Any] = {}
+        self._sync()
+
+    def _images(self) -> list[dict[str, Any]]:
+        events = self.coordinator.latest_events.get(self._device_id) or []
+        return [e for e in events if e.get("ftype") == "image" and e.get("fid")]
+
+    def _sync(self) -> bool:
+        """Point at the event for this position; True if it changed."""
+        images = self._images()
+        event = images[self._position] if self._position < len(images) else None
+        fid = (event or {}).get("fid")
+        if fid == self._fid:
+            return False
+        self._fid = fid
+        self._event = event or {}
+        if (event_ms := self._event.get("time")) is not None:
+            self._attr_image_last_updated = dt_util.utc_from_timestamp(event_ms / 1000)
+        return True
+
+    @property
+    def available(self) -> bool:
+        """Available once there is an event in this position."""
+        return super().available and self._fid is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The details behind the picture."""
+        loc = self._event.get("loc") or []
+        attrs: dict[str, Any] = {
+            "camera": "Rear" if self._event.get("camid") else "Front",
+            "event_type": self._event.get("type"),
+        }
+        if (event_ms := self._event.get("time")) is not None:
+            attrs["taken"] = dt_util.as_local(
+                dt_util.utc_from_timestamp(event_ms / 1000)
+            ).isoformat()
+        if len(loc) == 2:
+            attrs["latitude"], attrs["longitude"] = loc[0], loc[1]
+        return attrs
+
+    async def async_image(self) -> bytes | None:
+        """Download this snapshot on demand."""
+        if self._fid is None:
+            return None
+        return await self.coordinator.client.async_download(
+            self.coordinator.client.file_url(self._fid)
+        )
+
+    def _handle_coordinator_update(self) -> None:
+        if self._sync():
+            self._cached_image = None
+        super()._handle_coordinator_update()
 
 
 _EVENT_KEYS = {0: "last_event_front", 1: "last_event_rear"}

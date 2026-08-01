@@ -15,6 +15,7 @@ CONF_LIVE_KEEPALIVE = "live_keepalive"
 CONF_SETTINGS_INTERVAL = "settings_interval"
 CONF_ALBUM_LIMIT = "album_limit"
 CONF_SELFCHECK_INTERVAL = "selfcheck_interval"
+CONF_EVENT_IMAGES = "event_images"
 
 DEFAULT_SCAN_INTERVAL = 30  # seconds; the device itself reports every ~30s
 MIN_SCAN_INTERVAL = 10
@@ -57,3 +58,8 @@ GSM_BANDS = (
     (-113, "bad"),
 )
 GSM_WEAK_DBM = -104
+
+# How many recent event snapshots to expose as image entities, so a dashboard
+# can show them as a grid. 0 turns the grid off.
+DEFAULT_EVENT_IMAGES = 6
+MAX_EVENT_IMAGES = 12
