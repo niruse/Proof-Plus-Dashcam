@@ -61,9 +61,22 @@ class ProofMessageListener:
         self.alerts = 0
         self.last_frame: str | None = None
         self.session_id: str | None = None
+        # The cloud queues undelivered alerts per client id and replays them to
+        # a client it has not seen before — that is how a freshly installed app
+        # arrives with its list already filled. Derive ours from the config
+        # entry so it stays the same across restarts.
+        self._pid = f"ha{coordinator.config_entry.entry_id[:14]}"
+        # Alert ids already recorded, so a replay cannot duplicate the list.
+        self._seen: set[str] = set()
 
     def start(self) -> None:
         """Begin listening in the background."""
+        # Remember what was already recorded before this restart, so a replay
+        # of the cloud's history does not duplicate it.
+        for stored in self._coordinator.messages.values():
+            self._seen.update(
+                message["id"] for message in stored if message.get("id")
+            )
         self._task = self._hass.async_create_background_task(
             self._run(), f"{DOMAIN}_messages"
         )
@@ -109,7 +122,7 @@ class ProofMessageListener:
                             "ver": "3.1.37",
                             "model": "homeassistant",
                             "sysver": "12",
-                            "pid": "ha-proof-messages",
+                            "pid": self._pid,
                             "lang": "en_us",
                             "os": "android",
                             "app": "Proof",
@@ -201,6 +214,10 @@ class ProofMessageListener:
         if device_id is None:
             return
 
+        alert_id = str(envelope[0]) if envelope[0] else None
+        if alert_id and alert_id in self._seen:
+            return
+
         loc = payload.get("loc") or []
         when = payload.get("time")
         message = {
@@ -215,8 +232,14 @@ class ProofMessageListener:
             message["latitude"], message["longitude"] = loc[0], loc[1]
 
         stored = self._coordinator.messages.setdefault(device_id, [])
+        if alert_id:
+            self._seen.add(alert_id)
+            message["id"] = alert_id
         self.alerts += 1
+        # Replayed history arrives oldest-first, so place by time rather than
+        # always at the front.
         stored.insert(0, message)
+        stored.sort(key=lambda m: m.get("time") or "", reverse=True)
         del stored[MAX_MESSAGES:]
         self._coordinator.save_state()
         self._coordinator.async_update_listeners()

@@ -111,10 +111,11 @@ WebSocket as it happens. The integration keeps that socket open and records what
 `sensor.<device>_last_message`: the state is the newest alert's headline, and the recent ones
 (up to 50) are kept in its `messages` attribute for the dashboard to list.
 
-Because there is no history endpoint, the list starts empty and fills from the moment you add the
-integration — it cannot show alerts your phone received earlier. The app's list is not fetched
-either: it is a local database on the phone, which is why the app keeps showing older alerts that
-Home Assistant never saw.
+The cloud queues alerts it has not delivered yet and releases them in a burst at login, so a new
+client can arrive with some history already waiting. Anything the cloud has already handed over and
+had acknowledged is gone from that queue, so the list generally starts empty or short and fills as
+alerts happen. Each alert carries an id and is stored under it, so a replayed batch cannot
+duplicate the list.
 
 Which alerts you get is controlled by the **Alerts** switches (ignition, vibration, collision,
 share button, geofence, over-speed), the same account settings the app uses.
