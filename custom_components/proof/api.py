@@ -5,16 +5,24 @@ account phone number, then exchanged together with the password for a token
 (``grant_type=app``). Afterwards the session is kept alive with the refresh
 token — the password grant is deliberately not used, as it yields a session
 the v5 endpoints reject.
+
+The v5 endpoints also require an ``x-sign`` header. The mobile app computes it
+as ``base64(AES-CBC-PKCS7("Proof|<epoch_ms>|<version>"))`` with a fixed key and
+IV baked into the app; the server decrypts it and checks the timestamp is
+recent, so the value must be freshly generated for every request.
 """
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import time
 from collections.abc import Callable
 from typing import Any
 
 import aiohttp
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,11 +33,32 @@ OAUTH_CLIENT_SECRET = "api1234"
 OAUTH_SCOPE = "SCOPE_READ"
 
 APP_NAME = "Proof"
+APP_VERSION = "3.1.37"
+
+# The request-signing key and IV the mobile app embeds (recovered from the app).
+# The key is the appSecret string used as raw UTF-8 bytes; the IV is the app's
+# aesIv constant with the "--String" suffix the app appends.
+_SIGN_KEY = b"KklNRS1Qcm9vZioq"
+_SIGN_IV = b"16-Bytes--String"
 
 # Refresh this many seconds before the token actually expires.
 TOKEN_EXPIRY_MARGIN = 600
 
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
+
+def _x_sign() -> str:
+    """Return a fresh ``x-sign`` value for a request made right now."""
+    plaintext = f"{APP_NAME}|{int(time.time() * 1000)}|{APP_VERSION}".encode()
+    padder = padding.PKCS7(128).padder()
+    padded = padder.update(plaintext) + padder.finalize()
+    encryptor = Cipher(algorithms.AES(_SIGN_KEY), modes.CBC(_SIGN_IV)).encryptor()
+    return base64.b64encode(encryptor.update(padded) + encryptor.finalize()).decode()
+
+
+def _signed_headers() -> dict[str, str]:
+    """App-identity headers, including the per-request signature."""
+    return {"x-app": APP_NAME, "x-appver": APP_VERSION, "x-sign": _x_sign()}
 
 
 class ProofError(Exception):
@@ -50,14 +79,6 @@ class ProofInvalidCode(ProofError):
 
 class ProofInvalidCredentials(ProofError):
     """The phone number or password was rejected."""
-
-
-class ProofSigningRequired(ProofError):
-    """The endpoint needs the app's `x-sign` request signature, which we cannot produce.
-
-    Re-authenticating does not help: the signature is checked before the token,
-    so a brand new session fails in exactly the same way.
-    """
 
 
 class ProofInvalidPhone(ProofError):
@@ -97,7 +118,7 @@ class ProofApiClient:
             async with self._session.post(
                 f"{self._base_url}{path}",
                 json=payload,
-                headers={"x-app": APP_NAME},
+                headers=_signed_headers(),
                 timeout=REQUEST_TIMEOUT,
             ) as resp:
                 return await resp.json(content_type=None)
@@ -204,7 +225,7 @@ class ProofApiClient:
                 params=query,
                 json=json,
                 data=data,
-                headers={"x-app": APP_NAME},
+                headers=_signed_headers(),
                 timeout=REQUEST_TIMEOUT,
             ) as resp:
                 payload = {} if resp.status == 401 else await resp.json(content_type=None)
@@ -222,12 +243,14 @@ class ProofApiClient:
 
         if isinstance(payload, dict) and payload.get("success") is False:
             message = str(payload.get("data"))
-            # An unsigned request fails inside the server before the token is
-            # looked at, so this is not an authentication problem.
+            # The server raises this generic internal error when the request
+            # signature is missing or stale — which for us most likely means
+            # the system clock has drifted, since the signed timestamp must be
+            # recent. Surface it as retryable rather than fatal.
             if "System error" in message:
-                raise ProofSigningRequired(
-                    f"{path} requires the app's x-sign request signature "
-                    f"(server said: {message})"
+                raise ProofError(
+                    f"{path} rejected the request signature (check the system "
+                    f"clock is accurate); server said: {message}"
                 )
             raise ProofError(f"Proof API error on {path}: {message}")
         return payload
