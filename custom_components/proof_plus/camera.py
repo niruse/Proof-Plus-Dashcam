@@ -22,15 +22,17 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import (
+    CONF_LIVE_KEEPALIVE,
+    DEFAULT_LIVE_KEEPALIVE,
+    DOMAIN,
+)
 from .coordinator import ProofCoordinator
 from .entity import ProofEntity
 from .webrtc import ProofWebRTCClient
 
 _LOGGER = logging.getLogger(__name__)
 
-# Close the live session this long after the last frame is requested.
-IDLE_TIMEOUT = 10
 # ~5 fps MJPEG.
 STREAM_INTERVAL = 0.2
 
@@ -40,8 +42,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up a live camera per device."""
     coordinator: ProofCoordinator = hass.data[DOMAIN][entry.entry_id]
+    keepalive = entry.options.get(CONF_LIVE_KEEPALIVE, DEFAULT_LIVE_KEEPALIVE)
     async_add_entities(
-        ProofCamera(hass, coordinator, device_id) for device_id in coordinator.data
+        ProofCamera(hass, coordinator, device_id, keepalive)
+        for device_id in coordinator.data
     )
 
 
@@ -51,11 +55,16 @@ class ProofCamera(ProofEntity, Camera):
     _attr_translation_key = "live"
 
     def __init__(
-        self, hass: HomeAssistant, coordinator: ProofCoordinator, device_id: str
+        self,
+        hass: HomeAssistant,
+        coordinator: ProofCoordinator,
+        device_id: str,
+        keepalive: int,
     ) -> None:
         ProofEntity.__init__(self, coordinator, device_id)
         Camera.__init__(self)
         self.hass = hass
+        self._keepalive = keepalive
         self._attr_unique_id = f"{device_id}_live"
         self._client: ProofWebRTCClient | None = None
         self._lock = asyncio.Lock()
@@ -111,8 +120,12 @@ class ProofCamera(ProofEntity, Camera):
     def _reset_idle_timer(self) -> None:
         if self._idle_handle is not None:
             self._idle_handle.cancel()
+            self._idle_handle = None
+        # 0 keepalive means keep the session open until the entity is removed.
+        if self._keepalive <= 0:
+            return
         self._idle_handle = self.hass.loop.call_later(
-            IDLE_TIMEOUT,
+            self._keepalive,
             lambda: self.hass.async_create_task(self._async_teardown()),
         )
 

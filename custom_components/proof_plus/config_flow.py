@@ -32,8 +32,10 @@ from .const import (
     CONF_ENABLE_LIVE,
     CONF_ENABLE_MEDIA_BROWSER,
     CONF_ENABLE_SNAPSHOT,
+    CONF_LIVE_KEEPALIVE,
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
+    DEFAULT_LIVE_KEEPALIVE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MIN_SCAN_INTERVAL,
@@ -218,6 +220,12 @@ class ProofOptionsFlow(OptionsFlow):
                         CONF_ENABLE_LIVE,
                         default=options.get(CONF_ENABLE_LIVE, False),
                     ): bool,
+                    vol.Required(
+                        CONF_LIVE_KEEPALIVE,
+                        default=options.get(
+                            CONF_LIVE_KEEPALIVE, DEFAULT_LIVE_KEEPALIVE
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0)),
                 }
             ),
         )

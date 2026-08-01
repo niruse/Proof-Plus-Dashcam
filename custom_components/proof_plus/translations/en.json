@@ -44,12 +44,14 @@
           "scan_interval": "Polling interval (seconds)",
           "enable_snapshot": "Show latest event snapshot (image entity)",
           "enable_media_browser": "Browse recorded event clips in Media",
-          "enable_live": "Live view camera (streams over the dashcam's cellular data)"
+          "enable_live": "Live view camera (streams over the dashcam's cellular data)",
+          "live_keepalive": "Live view: keep streaming for (seconds after you stop watching)"
         },
         "data_description": {
           "enable_snapshot": "Adds an image entity showing the most recent impact snapshot. Downloaded only when viewed.",
           "enable_media_browser": "Lists recorded impact and collision clips under Media. Nothing is downloaded until you open a clip.",
-          "enable_live": "Adds a live camera. The dashcam only streams while you are watching, using its own mobile data."
+          "enable_live": "Adds a live camera. The dashcam only streams while you are watching, using its own mobile data.",
+          "live_keepalive": "How long to keep the live stream running after you stop watching. Set 0 to keep it running until you close it (uses cellular data continuously)."
         }
       }
     }
