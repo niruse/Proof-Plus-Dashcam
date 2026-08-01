@@ -66,24 +66,14 @@ the integration's **Configure** options.
 
 ## Live view
 
-Live view is **not implemented yet**, but the mechanism has been fully reverse-engineered so it can
-be added:
+Enable **Live view camera** in the options to add a live camera per dashcam. It is **off by default**
+because the dashcam streams over its own cellular connection — so the session is opened only while
+you are actually watching and is closed a few seconds after you stop.
 
-1. Open the `ws://…:8282/imclient` WebSocket and authenticate with the access token
-   (`[2,0,{"token":…,"info":…}]`).
-2. Send the device a request over that socket:
-   `sendReqMessage("<did>#0", ["rtmp_start", <camera_index>, <push_url>], 30000)`, where
-   `push_url = liveBase + getRtmpUrlStr(did)` and `liveBase` is `rtmp://aws7.2proof.co.il/live/`.
-3. The device then pushes RTMP to that URL; play the matching
-   `play_url = liveBase + getRtmpPlayUrlStr(did)`.
-
-Both URL builders append `"Proof/" + base64url(AES-CBC("Proof|<did>|<epoch_ms>[|play]"))`, encrypted
-with the app's separate `rtmpSecret`/`rtmpaesIv` constants.
-
-It is deliberately left out for now because **each live view makes the dashcam stream over its own
-cellular connection** (data cost and wake-up latency), and it needs a stateful WebSocket session that
-should be verified against a real device before shipping. When added it will be an explicit,
-off-by-default option, and streaming will only start when the camera is actually opened.
+The camera streams over **WebRTC** (this hardware does not support the RTMP path): the integration
+opens the imclient WebSocket, sends an SDP offer to the device, exchanges ICE candidates and connects
+through the Proof TURN relay, then decodes the H.264 track and serves it to Home Assistant as MJPEG.
+It works while the car is parked. Requires the `aiortc` package (installed automatically).
 
 ## Notes
 
