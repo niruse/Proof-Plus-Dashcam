@@ -41,7 +41,13 @@
       "init": {
         "title": "Proof options",
         "data": {
-          "scan_interval": "Polling interval (seconds)"
+          "scan_interval": "Polling interval (seconds)",
+          "enable_snapshot": "Show latest event snapshot (image entity)",
+          "enable_media_browser": "Browse recorded event clips in Media"
+        },
+        "data_description": {
+          "enable_snapshot": "Adds an image entity showing the most recent impact snapshot. Downloaded only when viewed.",
+          "enable_media_browser": "Lists recorded impact and collision clips under Media. Nothing is downloaded until you open a clip."
         }
       }
     }

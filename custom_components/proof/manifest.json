@@ -3,10 +3,11 @@
   "name": "Proof Dashcam",
   "codeowners": ["@niruse"],
   "config_flow": true,
-  "documentation": "https://github.com/niruse/Proof",
+  "after_dependencies": ["media_source"],
+  "documentation": "https://github.com/niruse/Proof-Plus",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/niruse/Proof/issues",
+  "issue_tracker": "https://github.com/niruse/Proof-Plus/issues",
   "requirements": [],
   "version": "1.0.0"
 }

@@ -25,12 +25,24 @@ Per dashcam on your account:
 
 Redacted diagnostics are available from the integration page for troubleshooting.
 
+### Optional video features (off by default)
+
+Enable these under the integration's **Configure** options — nothing activates or streams
+unless you turn it on:
+
+- **Event snapshots** — adds an `image` entity per dashcam showing the most recent impact/event
+  snapshot, with the event's GPS location. The image is only downloaded when Home Assistant
+  renders it.
+- **Media browser** — lists recorded impact and collision clips (image and video) under
+  **Media → Proof Dashcam**, streamed straight from the Proof file server on demand.
+- **Live view** — see the note under [Live view](#live-view) below.
+
 ## Installation
 
 ### HACS (recommended)
 
 1. HACS → Integrations → ⋮ → **Custom repositories**
-2. Add `https://github.com/niruse/Proof` as an **Integration**
+2. Add `https://github.com/niruse/Proof-Plus` as an **Integration**
 3. Install **Proof Dashcam** and restart Home Assistant
 
 ### Manual
@@ -51,6 +63,27 @@ session is ever rejected, Home Assistant asks you to re-authenticate with a new 
 
 The polling interval (default 30 s — the same rate the device reports at) can be changed under
 the integration's **Configure** options.
+
+## Live view
+
+Live view is **not implemented yet**, but the mechanism has been fully reverse-engineered so it can
+be added:
+
+1. Open the `ws://…:8282/imclient` WebSocket and authenticate with the access token
+   (`[2,0,{"token":…,"info":…}]`).
+2. Send the device a request over that socket:
+   `sendReqMessage("<did>#0", ["rtmp_start", <camera_index>, <push_url>], 30000)`, where
+   `push_url = liveBase + getRtmpUrlStr(did)` and `liveBase` is `rtmp://aws7.2proof.co.il/live/`.
+3. The device then pushes RTMP to that URL; play the matching
+   `play_url = liveBase + getRtmpPlayUrlStr(did)`.
+
+Both URL builders append `"Proof/" + base64url(AES-CBC("Proof|<did>|<epoch_ms>[|play]"))`, encrypted
+with the app's separate `rtmpSecret`/`rtmpaesIv` constants.
+
+It is deliberately left out for now because **each live view makes the dashcam stream over its own
+cellular connection** (data cost and wake-up latency), and it needs a stateful WebSocket session that
+should be verified against a real device before shipping. When added it will be an explicit,
+off-by-default option, and streaming will only start when the camera is actually opened.
 
 ## Notes
 

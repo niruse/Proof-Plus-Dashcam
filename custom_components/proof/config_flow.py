@@ -29,7 +29,10 @@ from .api import (
 )
 from .const import (
     CONF_CODE,
+    CONF_ENABLE_MEDIA_BROWSER,
+    CONF_ENABLE_SNAPSHOT,
     CONF_REFRESH_TOKEN,
+    CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MIN_SCAN_INTERVAL,
@@ -185,7 +188,7 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ProofOptionsFlow(OptionsFlow):
-    """Options flow: polling interval."""
+    """Options flow: polling interval and the opt-in video features."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -193,16 +196,23 @@ class ProofOptionsFlow(OptionsFlow):
         """Manage options."""
         if user_input is not None:
             return self.async_create_entry(data=user_input)
+        options = self.config_entry.options
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        "scan_interval",
-                        default=self.config_entry.options.get(
-                            "scan_interval", DEFAULT_SCAN_INTERVAL
-                        ),
+                        CONF_SCAN_INTERVAL,
+                        default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)),
+                    vol.Required(
+                        CONF_ENABLE_SNAPSHOT,
+                        default=options.get(CONF_ENABLE_SNAPSHOT, False),
+                    ): bool,
+                    vol.Required(
+                        CONF_ENABLE_MEDIA_BROWSER,
+                        default=options.get(CONF_ENABLE_MEDIA_BROWSER, False),
+                    ): bool,
                 }
             ),
         )

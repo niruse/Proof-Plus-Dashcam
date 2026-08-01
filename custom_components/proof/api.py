@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://app-p106.2proof.co.il"
+DEFAULT_FS_BASE = "http://fs-p106.2proof.co.il/fs"
 
 OAUTH_CLIENT_ID = "app"
 OAUTH_CLIENT_SECRET = "api1234"
@@ -264,6 +265,48 @@ class ProofApiClient:
         """Return the account profile."""
         payload = await self._async_request("GET", "/api/app/v5/user/profile")
         return payload.get("data", {})
+
+    async def async_get_files(
+        self,
+        device_id: str,
+        file_type: str = "shake",
+        *,
+        page: int = 1,
+        size: int = 20,
+    ) -> list[dict[str, Any]]:
+        """List cloud event media for a device, newest first.
+
+        ``file_type`` is ``shake`` (impact events) or ``coll`` (collisions).
+        Each item has an ``fid`` resolvable with :func:`file_url`, an ``ftype``
+        (``image`` or ``video``), a ``time`` (epoch ms) and a ``loc`` [lat, lng].
+        """
+        payload = await self._async_request(
+            "GET",
+            "/api/app/v5/cloud/files",
+            params={
+                "did": device_id,
+                "type": file_type,
+                "time": int(time.time() * 1000),
+                "page": page,
+                "size": size,
+            },
+        )
+        return payload.get("items", [])
+
+    def file_url(self, fid: str) -> str:
+        """Resolve a cloud file id to a downloadable URL."""
+        if fid.startswith("http"):
+            return fid
+        return f"{DEFAULT_FS_BASE}/{fid}"
+
+    async def async_download(self, url: str) -> bytes:
+        """Download a cloud media file (these are unsigned plain GETs)."""
+        try:
+            async with self._session.get(url, timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                return await resp.read()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise ProofConnectionError(f"Error downloading {url}: {err}") from err
 
     async def async_get_track(
         self, device_id: str, start_ms: int, end_ms: int, locale: str = "en_US"
