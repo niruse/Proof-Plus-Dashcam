@@ -105,19 +105,44 @@ own. The switch's `interval_minutes` attribute shows the rate in use.
 
 ## Example dashboard
 
-`examples/dashboard.json` is a complete dashboard laid out like the mobile app, with five tabs:
-
-- **Live** — front and rear cameras, online/ignition status and a speed trend
-- **Location** — map with 24 h of history, plus speed, heading, altitude and odometer
-- **Media** — a grid of recent event snapshots to tap for the full picture and its details,
-  plus the latest from each camera and a link to the recordings
-- **Messages** — the alert feed, newest first, with each alert's time
-- **Settings** — every dashcam setting, the account's alert toggles, diagnostics and the
-  **Self-check** panel
+`examples/dashboard.json` is a complete dashboard laid out like the mobile app, with five tabs.
 
 To use it: create a new dashboard, open its ⋮ menu → **Raw configuration editor**, paste the file
 in, and replace `YOUR_DEVICE` with your dashcam's id (the number in your entity names, e.g.
 `camera.1234567_live_view` → `1234567`).
+
+> The pictures below are rendered from `examples/dashboard.json` itself, with invented placeholder
+> readings — no real location, plate or account data.
+
+### Live
+
+Both cameras as stills plus the live streams, with status and a speed trend alongside.
+
+![Live tab](examples/images/dashboard-live.png)
+
+### Location
+
+Where the car is now, its recent track, and the trip figures.
+
+![Location tab](examples/images/dashboard-location.png)
+
+### Media
+
+The latest event from each camera, a grid of recent snapshots to tap, and a way into the album.
+
+![Media tab](examples/images/dashboard-media.png)
+
+### Messages
+
+The alert feed, newest first.
+
+![Messages tab](examples/images/dashboard-messages.png)
+
+### Settings
+
+Every dashcam setting, the account's alert toggles, diagnostics and the self-check panel.
+
+![Settings tab](examples/images/dashboard-settings.png)
 
 ## Messages
 
