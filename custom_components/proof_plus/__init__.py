@@ -81,9 +81,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     messages = ProofMessageListener(hass, coordinator)
     messages.start()
     coordinator.message_listener = messages
-    entry.async_on_unload(
-        lambda: hass.async_create_task(messages.async_stop())
-    )
+
+    @callback
+    def _stop_messages() -> None:
+        """Close the alert socket when the entry unloads.
+
+        This must return nothing: Home Assistant awaits whatever an unload
+        callback hands back, and a Task is not a coroutine.
+        """
+        hass.async_create_task(messages.async_stop())
+
+    entry.async_on_unload(_stop_messages)
 
     # Optionally re-read the dashcam's settings on a schedule. Each read
     # connects to the device, so this is off unless the user asks for it.
