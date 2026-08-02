@@ -80,6 +80,9 @@ class ProofWebRTCClient:
         self._tasks: list[asyncio.Task] = []
         self._seq = 1
         self._latest_frame: VideoFrame | None = None
+        # Bumped whenever a frame arrives, so a caller can wait for one that is
+        # genuinely newer rather than accepting whatever is cached.
+        self._frame_seq = 0
         self._connected = asyncio.Event()
         self._closed = False
         # Lets the browser bridge and the snapshot grabber consume the same
@@ -99,6 +102,20 @@ class ProofWebRTCClient:
     def latest_frame(self) -> VideoFrame | None:
         """Return the most recently decoded video frame."""
         return self._latest_frame
+
+    @property
+    def frame_seq(self) -> int:
+        """How many frames have been decoded; use to wait for a fresh one."""
+        return self._frame_seq
+
+    def invalidate_frame(self) -> None:
+        """Forget the cached frame.
+
+        Called when the device is told to change camera: the frame still in
+        hand belongs to the previous camera, and serving it would show the
+        wrong view.
+        """
+        self._latest_frame = None
 
     @property
     def has_media(self) -> bool:
@@ -208,6 +225,8 @@ class ProofWebRTCClient:
         for _ in range((index - current) % 2 or 1):
             self._rpc("switchCamera")
             await asyncio.sleep(1)
+        # Whatever was decoded up to now came from the old camera.
+        self.invalidate_frame()
 
     def _rpc(self, name: str, params: Any = None) -> str | None:
         """Send an RPC to the device over the control channel."""
@@ -337,6 +356,7 @@ class ProofWebRTCClient:
             while not self._closed:
                 frame = await track.recv()
                 self._latest_frame = frame
+                self._frame_seq += 1
                 self._connected.set()
         except asyncio.CancelledError:
             pass

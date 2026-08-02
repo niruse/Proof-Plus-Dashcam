@@ -79,11 +79,28 @@ class DeviceLiveSession:
         self._client: ProofWebRTCClient | None = None
         self._current_camera = 0
         self._lock = asyncio.Lock()
+        # Entities currently watching. The session is shared, so it must only
+        # be torn down once the last of them has stopped.
+        self._watchers: set[str] = set()
 
     @property
     def client(self) -> ProofWebRTCClient | None:
         """The running client, if any."""
         return self._client
+
+    @property
+    def current_camera(self) -> int:
+        """Which camera the dashcam is streaming right now."""
+        return self._current_camera
+
+    def add_watcher(self, key: str) -> None:
+        """Note that an entity is watching."""
+        self._watchers.add(key)
+
+    def remove_watcher(self, key: str) -> bool:
+        """Drop a watcher; True when nobody is left."""
+        self._watchers.discard(key)
+        return not self._watchers
 
     async def async_acquire(self, cam_index: int) -> ProofWebRTCClient | None:
         """Return a client streaming the requested camera, starting it if needed."""
@@ -109,6 +126,15 @@ class DeviceLiveSession:
                 await self._client.async_select_camera(cam_index, self._current_camera)
                 self._current_camera = cam_index
             return self._client
+
+    async def async_release(self, key: str) -> None:
+        """Stop the session once the last watcher has gone."""
+        async with self._lock:
+            self._watchers.discard(key)
+            if self._watchers or self._client is None:
+                return
+            await self._client.async_stop()
+            self._client = None
 
     async def async_stop(self) -> None:
         """Close the session to the dashcam."""
@@ -148,11 +174,13 @@ class ProofCamera(ProofEntity, Camera):
         # Browser peer connections, keyed by Home Assistant's session id.
         self._sessions: dict[str, Any] = {}
         self._session = coordinator.live_session(hass, device_id)
+        self._watch_key = f"{device_id}:{cam_index}"
 
     # --- device session lifecycle ------------------------------------------
 
     async def _async_ensure_client(self) -> ProofWebRTCClient | None:
         """Get the shared device session, streaming this entity's camera."""
+        self._session.add_watcher(self._watch_key)
         return await self._session.async_acquire(self._cam_index)
 
     def _reset_idle_timer(self) -> None:
@@ -168,10 +196,15 @@ class ProofCamera(ProofEntity, Camera):
         )
 
     async def _async_teardown(self) -> None:
-        """Close the shared device session once nobody is watching it."""
+        """Release our claim; the session closes when the last entity lets go.
+
+        The front and rear entities share one connection to the dashcam, so
+        stopping it here unconditionally would cut off the other entity while
+        somebody was still watching it.
+        """
         if self._sessions:
             return
-        await self._session.async_stop()
+        await self._session.async_release(self._watch_key)
 
     # --- still images -------------------------------------------------------
 
@@ -179,13 +212,20 @@ class ProofCamera(ProofEntity, Camera):
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return a current still frame (thumbnails, snapshots, automations)."""
+        # Note the frame count before acquiring: if acquiring switches camera
+        # it drops the cached frame, and we must not hand back a picture that
+        # was decoded from the camera we just switched away from.
+        existing = self._session.client
+        seq_before = existing.frame_seq if existing is not None else 0
+
         client = await self._async_ensure_client()
         if client is None:
             return None
         self._reset_idle_timer()
         deadline = self.hass.loop.time() + FRAME_WAIT_TIMEOUT
         while self.hass.loop.time() < deadline:
-            if (frame := client.latest_frame) is not None:
+            frame = client.latest_frame
+            if frame is not None and client.frame_seq > seq_before:
                 return await self.hass.async_add_executor_job(_frame_to_jpeg, frame)
             await asyncio.sleep(0.1)
         return None
