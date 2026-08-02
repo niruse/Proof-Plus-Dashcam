@@ -138,6 +138,8 @@ class ProofMessagePhoto(ProofEntity, ImageEntity):
             "alert": self._message.get("topic"),
             "text": self._message.get("text"),
             "type": self._message.get("type"),
+            # Lets a dashboard put each picture under the alert it belongs to.
+            "message_id": self._message.get("id"),
         }
         if when := self._message.get("time"):
             attrs["time"] = dt_util.as_local(dt_util.parse_datetime(when)).isoformat()

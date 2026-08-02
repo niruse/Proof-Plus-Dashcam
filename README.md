@@ -138,7 +138,7 @@ The latest event from each camera, a grid of recent snapshots to tap, and a way 
 
 ### Messages
 
-The alert feed, newest first.
+The alert feed, newest first, with each alert's photos beneath it where there are any.
 
 ![Messages tab](examples/images/dashboard-messages.png)
 
@@ -174,7 +174,9 @@ collision do; ignition does not. The cloud gives no link between an alert and it
 are matched the way the app's own screen appears to: by time, within two minutes either side.
 
 Matched pictures become `image.<device>_alert_photo_1…N`, newest first, each carrying the alert it
-belongs to (`alert`, `text`, `type`, `time`, `camera`) as attributes. How many to keep is set by
+belongs to (`alert`, `text`, `type`, `time`, `camera`, `message_id`) as attributes. `message_id` is
+what lets the example dashboard put each picture directly under its own alert in the feed, the way
+the app does. How many to keep is set by
 **Alert photos to keep** under **Configure** — four by default, 0 to turn them off.
 
 Every alert also fires a `proof_plus_message` event on the Home Assistant bus, so you can trigger
