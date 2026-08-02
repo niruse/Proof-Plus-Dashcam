@@ -34,6 +34,7 @@ from .const import (
     CONF_ENABLE_MEDIA_BROWSER,
     CONF_ENABLE_SNAPSHOT,
     CONF_EVENT_IMAGES,
+    CONF_MESSAGE_IMAGES,
     CONF_LIVE_KEEPALIVE,
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
@@ -42,6 +43,8 @@ from .const import (
     CONF_SNAPSHOT_INTERVAL,
     DEFAULT_ALBUM_LIMIT,
     DEFAULT_EVENT_IMAGES,
+    DEFAULT_MESSAGE_IMAGES,
+    MAX_MESSAGE_IMAGES,
     DEFAULT_LIVE_KEEPALIVE,
     DEFAULT_SETTINGS_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
@@ -262,8 +265,17 @@ class ProofOptionsFlow(OptionsFlow):
                     ),
                     vol.Required(
                         CONF_EVENT_IMAGES,
+    CONF_MESSAGE_IMAGES,
                         default=options.get(CONF_EVENT_IMAGES, DEFAULT_EVENT_IMAGES),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_EVENT_IMAGES)),
+                    vol.Required(
+                        CONF_MESSAGE_IMAGES,
+                        default=options.get(
+                            CONF_MESSAGE_IMAGES, DEFAULT_MESSAGE_IMAGES
+                        ),
+                    ): vol.All(
+                        vol.Coerce(int), vol.Range(min=0, max=MAX_MESSAGE_IMAGES)
+                    ),
                     vol.Required(
                         CONF_ALBUM_LIMIT,
                         default=options.get(CONF_ALBUM_LIMIT, DEFAULT_ALBUM_LIMIT),

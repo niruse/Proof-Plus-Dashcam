@@ -17,6 +17,7 @@ CONF_ALBUM_LIMIT = "album_limit"
 CONF_SELFCHECK_INTERVAL = "selfcheck_interval"
 CONF_EVENT_IMAGES = "event_images"
 CONF_SNAPSHOT_INTERVAL = "snapshot_interval"
+CONF_MESSAGE_IMAGES = "message_images"
 
 DEFAULT_SCAN_INTERVAL = 30  # seconds; the device itself reports every ~30s
 MIN_SCAN_INTERVAL = 10
@@ -70,3 +71,13 @@ MAX_EVENT_IMAGES = 12
 # is deliberately not frequent.
 DEFAULT_SNAPSHOT_INTERVAL = 15
 MIN_SNAPSHOT_INTERVAL = 1
+
+# How many photos attached to alerts to keep on hand. Some alerts (anti-theft,
+# vibration, collision) leave a picture from each camera in the cloud album;
+# ignition alerts do not. 0 turns the feature off.
+DEFAULT_MESSAGE_IMAGES = 4
+MAX_MESSAGE_IMAGES = 12
+
+# How far either side of an alert to look for its pictures. The dashcam
+# uploads them a little after the event, and the two clocks are not exact.
+MESSAGE_PHOTO_WINDOW = 120

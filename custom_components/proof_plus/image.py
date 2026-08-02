@@ -19,7 +19,9 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_ENABLE_LIVE,
     CONF_EVENT_IMAGES,
+    CONF_MESSAGE_IMAGES,
     DEFAULT_EVENT_IMAGES,
+    DEFAULT_MESSAGE_IMAGES,
     DOMAIN,
 )
 from .coordinator import ProofCoordinator
@@ -53,6 +55,14 @@ async def async_setup_entry(
         for device_id in coordinator.data
         for position in range(recent)
     )
+    # Photos belonging to alerts, newest first.
+    keep = entry.options.get(CONF_MESSAGE_IMAGES, DEFAULT_MESSAGE_IMAGES)
+    entities.extend(
+        ProofMessagePhoto(hass, coordinator, device_id, position)
+        for device_id in coordinator.data
+        for position in range(keep)
+    )
+
     # A still from each camera, captured once when the card first renders and
     # then left alone. Needs the live session, so only when live view is on.
     if entry.options.get(CONF_ENABLE_LIVE):
@@ -62,6 +72,92 @@ async def async_setup_entry(
             for index in range(_camera_count(device))
         )
     async_add_entities(entities)
+
+
+class ProofMessagePhoto(ProofEntity, ImageEntity):
+    """One of the photos the dashcam saved for a recent alert.
+
+    Only some alerts leave pictures — anti-theft, vibration and collision do,
+    ignition does not — so the newest photos across all alerts are flattened
+    into a list and this entity shows one position in it.
+    """
+
+    _attr_entity_registry_enabled_default = True
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: ProofCoordinator,
+        device_id: str,
+        position: int,
+    ) -> None:
+        ProofEntity.__init__(self, coordinator, device_id)
+        ImageEntity.__init__(self, hass)
+        self._position = position
+        self._attr_name = f"Alert photo {position + 1}"
+        self._attr_unique_id = f"{device_id}_message_photo_{position + 1}"
+        self._fid: str | None = None
+        self._photo: dict[str, Any] = {}
+        self._message: dict[str, Any] = {}
+        self._sync()
+
+    def _photos(self) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        """Every alert photo, newest first, paired with its alert."""
+        return [
+            (photo, message)
+            for message in (self.coordinator.messages.get(self._device_id) or [])
+            for photo in (message.get("photos") or [])
+        ]
+
+    def _sync(self) -> bool:
+        """Point at the photo for this position; True if it changed."""
+        photos = self._photos()
+        photo, message = (
+            photos[self._position] if self._position < len(photos) else ({}, {})
+        )
+        fid = photo.get("fid")
+        if fid == self._fid:
+            return False
+        self._fid, self._photo, self._message = fid, photo, message
+        if when := message.get("time"):
+            self._attr_image_last_updated = dt_util.parse_datetime(when)
+        return True
+
+    @property
+    def available(self) -> bool:
+        """Available once an alert with a photo has arrived."""
+        return super().available and self._fid is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say which alert this picture belongs to."""
+        if not self._fid:
+            return {}
+        attrs: dict[str, Any] = {
+            "camera": self._photo.get("camera"),
+            "alert": self._message.get("topic"),
+            "text": self._message.get("text"),
+            "type": self._message.get("type"),
+        }
+        if when := self._message.get("time"):
+            attrs["time"] = dt_util.as_local(dt_util.parse_datetime(when)).isoformat()
+        for key in ("latitude", "longitude"):
+            if key in self._message:
+                attrs[key] = self._message[key]
+        return attrs
+
+    async def async_image(self) -> bytes | None:
+        """Download this picture on demand."""
+        if self._fid is None:
+            return None
+        return await self.coordinator.client.async_download(
+            self.coordinator.client.file_url(self._fid)
+        )
+
+    def _handle_coordinator_update(self) -> None:
+        if self._sync():
+            self._cached_image = None
+        super()._handle_coordinator_update()
 
 
 _SNAPSHOT_KEYS = {0: "front_snapshot", 1: "rear_snapshot"}
@@ -114,7 +210,9 @@ class ProofLiveSnapshotImage(ProofEntity, ImageEntity):
     @property
     def data(self) -> bytes | None:
         """The last captured still, if there is one."""
-        return self._data
+        return self._data or (
+            self.coordinator.stills.get(self._device_id) or {}
+        ).get(self._cam_index)
 
     async def async_added_to_hass(self) -> None:
         """Make this snapshot reachable by the refresh button."""
@@ -162,6 +260,10 @@ class ProofLiveSnapshotImage(ProofEntity, ImageEntity):
                     self._data = await self.hass.async_add_executor_job(
                         _frame_to_jpeg, frame
                     )
+                    # Share it, so the camera card shows this new picture too.
+                    self.coordinator.stills.setdefault(self._device_id, {})[
+                        self._cam_index
+                    ] = self._data
                     self._attr_image_last_updated = dt_util.utcnow()
                     self.async_write_ha_state()
                     return True
@@ -173,9 +275,9 @@ class ProofLiveSnapshotImage(ProofEntity, ImageEntity):
 
     async def async_image(self) -> bytes | None:
         """Serve the still, capturing one the first time it is asked for."""
-        if self._data is None:
+        if self.data is None:
             await self.async_capture()
-        return self._data
+        return self.data
 
 
 class ProofEventImage(ProofEntity, ImageEntity):

@@ -24,6 +24,7 @@ Per dashcam on your account:
 | `sensor` Last seen | Timestamp of the last report |
 | `sensor` Last message | The newest alert the cloud pushed, with the recent ones as attributes |
 | `image` Front/Rear snapshot | A still from each camera, taken on demand (with live view enabled) |
+| `image` Alert photo 1…N | The pictures the dashcam saved for recent alerts |
 
 Redacted diagnostics are available from the integration page for troubleshooting.
 
@@ -165,6 +166,16 @@ assigns it, so a replay cannot duplicate the list.
 
 Which alerts you get is controlled by the **Alerts** switches (ignition, vibration, collision,
 share button, geofence, over-speed), the same account settings the app uses.
+
+### Alert photos
+
+Some alerts leave a picture from each camera in the cloud album — anti-theft, vibration and
+collision do; ignition does not. The cloud gives no link between an alert and its pictures, so they
+are matched the way the app's own screen appears to: by time, within two minutes either side.
+
+Matched pictures become `image.<device>_alert_photo_1…N`, newest first, each carrying the alert it
+belongs to (`alert`, `text`, `type`, `time`, `camera`) as attributes. How many to keep is set by
+**Alert photos to keep** under **Configure** — four by default, 0 to turn them off.
 
 Every alert also fires a `proof_plus_message` event on the Home Assistant bus, so you can trigger
 automations on one directly:

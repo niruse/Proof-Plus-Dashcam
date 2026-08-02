@@ -80,6 +80,10 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         # Snapshot images register themselves here so the refresh button can
         # find them without reaching into Home Assistant's platform internals.
         self.snapshot_images: dict[str, list[Any]] = {}
+        # The latest still per camera, shared by the camera entity that shows
+        # it and the image entity the refresh button drives. Keeping one copy
+        # is what makes "Take new photos" change the picture on the card.
+        self.stills: dict[str, dict[int, bytes]] = {}
         # How many recordings each album folder lists.
         self.album_limit = entry.options.get(CONF_ALBUM_LIMIT, DEFAULT_ALBUM_LIMIT)
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -259,7 +263,48 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         await self._async_refresh_alerts()
         if self._fetch_events:
             await self._async_refresh_events(result)
+            self._attach_message_photos()
         return result
+
+    def _attach_message_photos(self) -> None:
+        """Pair each alert with the pictures the dashcam saved for it.
+
+        Some alerts leave a photo from each camera in the cloud album a few
+        seconds later; ignition alerts leave none. The cloud gives no link
+        between the two, so match them the way the app's own screen appears
+        to — by time.
+        """
+        from .const import MESSAGE_PHOTO_WINDOW
+
+        for device_id, messages in self.messages.items():
+            events = [
+                e for e in (self.latest_events.get(device_id) or [])
+                if e.get("ftype") == "image" and e.get("fid") and e.get("time")
+            ]
+            if not events:
+                continue
+            for message in messages:
+                if "photos" in message:
+                    continue
+                when = message.get("time")
+                if not when:
+                    continue
+                try:
+                    stamp = dt_util.parse_datetime(when).timestamp()
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                photos = [
+                    {
+                        "fid": e["fid"],
+                        "camera": "Rear" if e.get("camid") else "Front",
+                    }
+                    for e in events
+                    if abs(e["time"] / 1000 - stamp) <= MESSAGE_PHOTO_WINDOW
+                ]
+                # Record the empty result too, so an alert that never had
+                # pictures is not re-examined on every refresh.
+                message["photos"] = photos
+            self._save_props()
 
     async def _async_refresh_alerts(self) -> None:
         """Read the account's alert toggles; a failure must not fail the update."""

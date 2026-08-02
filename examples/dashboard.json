@@ -363,6 +363,64 @@
         },
         {
           "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Alert photos",
+              "icon": "mdi:image-multiple",
+              "heading_style": "title"
+            },
+            {
+              "type": "grid",
+              "columns": 2,
+              "square": true,
+              "cards": [
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_alert_photo_1",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                },
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_alert_photo_2",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                },
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_alert_photo_3",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                },
+                {
+                  "type": "picture-entity",
+                  "entity": "image.YOUR_DEVICE_alert_photo_4",
+                  "show_name": false,
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "more-info"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "content": "Some alerts leave a photo from each camera — anti-theft, vibration and collision do, ignition does not. Tap one for the alert it belongs to."
+            }
+          ]
+        },
+        {
+          "type": "grid",
           "column_span": 2,
           "cards": [
             {

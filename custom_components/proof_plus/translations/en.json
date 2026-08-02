@@ -50,7 +50,8 @@
           "album_limit": "Recordings to show per album folder",
           "selfcheck_interval": "Run self-check every (hours, 0 = only when asked)",
           "event_images": "Recent event snapshots to show as a grid",
-          "snapshot_interval": "Snapshot auto-refresh (minutes)"
+          "snapshot_interval": "Snapshot auto-refresh (minutes)",
+          "message_images": "Alert photos to keep"
         },
         "data_description": {
           "enable_snapshot": "Adds an image entity showing the most recent impact snapshot. Downloaded only when viewed.",
@@ -61,7 +62,8 @@
           "album_limit": "How many of the newest recordings each album folder lists. Nothing is downloaded — a recording is only fetched from the cloud when you open it — so this just keeps the lists short.",
           "selfcheck_interval": "Checks the SIM, signal, server connection, ignition and GPS from what the dashcam last reported. Costs nothing — it uses data already polled.",
           "event_images": "Creates that many image entities holding the newest event snapshots, newest first, so a dashboard can show them as small pictures you tap for the full picture and its details. 0 turns them off.",
-          "snapshot_interval": "How often the camera snapshots refresh while the auto-refresh switch is on. Each refresh wakes the dashcam and uses its mobile data."
+          "snapshot_interval": "How often the camera snapshots refresh while the auto-refresh switch is on. Each refresh wakes the dashcam and uses its mobile data.",
+          "message_images": "Some alerts (anti-theft, vibration, collision) leave a photo from each camera. This is how many of those photos to keep as entities. 0 turns them off."
         }
       }
     }

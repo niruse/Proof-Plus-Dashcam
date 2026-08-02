@@ -202,7 +202,6 @@ class ProofCamera(ProofEntity, Camera):
         # The last still we produced, and how many times we had to wake the
         # dashcam to get one. The counter is surfaced as an attribute so this
         # cannot silently start costing mobile data again.
-        self._still: bytes | None = None
         self._captures = 0
 
     # --- device session lifecycle ------------------------------------------
@@ -240,7 +239,10 @@ class ProofCamera(ProofEntity, Camera):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose how often the dashcam was woken for a still."""
-        return {"captures": self._captures, "has_still": self._still is not None}
+        return {
+            "captures": self._captures,
+            "has_still": self._cached_snapshot() is not None,
+        }
 
     def _cached_snapshot(self) -> bytes | None:
         """The still already on hand for this camera, if any.
@@ -248,10 +250,9 @@ class ProofCamera(ProofEntity, Camera):
         Prefer the snapshot entity's copy, since the refresh button and the
         auto-refresh switch keep that one current.
         """
-        for image in self.coordinator.snapshot_images.get(self._device_id) or []:
-            if image.cam_index == self._cam_index and image.data is not None:
-                return image.data
-        return self._still
+        return (self.coordinator.stills.get(self._device_id) or {}).get(
+            self._cam_index
+        )
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
@@ -283,7 +284,9 @@ class ProofCamera(ProofEntity, Camera):
                 still = await self.hass.async_add_executor_job(_frame_to_jpeg, frame)
                 # Keep it: a picture card asks again every few seconds, and
                 # without this every one of those would wake the dashcam.
-                self._still = still
+                self.coordinator.stills.setdefault(self._device_id, {})[
+                    self._cam_index
+                ] = still
                 self._captures += 1
                 return still
             await asyncio.sleep(0.1)
