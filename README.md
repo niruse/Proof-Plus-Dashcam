@@ -23,6 +23,7 @@ Per dashcam on your account:
 | `sensor` GSM signal | Cellular signal strength (dBm) |
 | `sensor` Last seen | Timestamp of the last report |
 | `sensor` Last message | The newest alert the cloud pushed, with the recent ones as attributes |
+| `image` Front/Rear snapshot | A still from each camera, taken on demand (with live view enabled) |
 
 Redacted diagnostics are available from the integration page for troubleshooting.
 
@@ -87,6 +88,14 @@ front camera shows until you switch back.
 
 The **keep-alive** option controls how long the stream stays up after you stop watching (0 keeps it
 running until closed, which uses cellular data continuously).
+
+### Snapshots
+
+A live card is blank until you open it, because the dashcam only streams while it is being watched.
+So with live view **and** event snapshots enabled, each camera also gets a **snapshot** image: a
+still taken the first time the card is shown and then kept, so the dashboard has a picture on it
+without holding a stream open. Nothing refreshes on a timer — every capture wakes the dashcam and
+spends its mobile data — so a **Refresh snapshots** button takes a new pair when you want one.
 
 ## Example dashboard
 

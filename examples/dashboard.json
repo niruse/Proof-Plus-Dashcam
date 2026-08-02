@@ -18,6 +18,39 @@
             },
             {
               "type": "picture-entity",
+              "entity": "image.YOUR_DEVICE_front_snapshot",
+              "name": "Front",
+              "show_state": false,
+              "tap_action": {
+                "action": "more-info"
+              }
+            },
+            {
+              "type": "picture-entity",
+              "entity": "image.YOUR_DEVICE_rear_snapshot",
+              "name": "Rear",
+              "show_state": false,
+              "tap_action": {
+                "action": "more-info"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "button.YOUR_DEVICE_refresh_snapshots",
+              "name": "Take new photos"
+            },
+            {
+              "type": "markdown",
+              "content": "Photos are taken once when this page loads — use **Take new photos** for a fresh pair. Live video below streams over the dashcam's own mobile data and only while a camera is open, and it can show one camera at a time."
+            },
+            {
+              "type": "heading",
+              "heading": "Live video",
+              "icon": "mdi:video",
+              "heading_style": "subtitle"
+            },
+            {
+              "type": "picture-entity",
               "entity": "camera.YOUR_DEVICE_live_view",
               "name": "Front",
               "camera_view": "live",
@@ -37,10 +70,6 @@
               "tap_action": {
                 "action": "more-info"
               }
-            },
-            {
-              "type": "markdown",
-              "content": "The dashcam streams over its own mobile data, and only while a camera is open. It can show one camera at a time."
             }
           ]
         },

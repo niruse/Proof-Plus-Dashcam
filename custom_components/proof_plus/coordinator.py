@@ -77,6 +77,9 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         # Alerts the cloud has pushed, newest first, per dashcam.
         self.messages: dict[str, list[dict[str, Any]]] = {}
         self.message_listener: Any = None
+        # Snapshot images register themselves here so the refresh button can
+        # find them without reaching into Home Assistant's platform internals.
+        self.snapshot_images: dict[str, list[Any]] = {}
         # How many recordings each album folder lists.
         self.album_limit = entry.options.get(CONF_ALBUM_LIMIT, DEFAULT_ALBUM_LIMIT)
         scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)

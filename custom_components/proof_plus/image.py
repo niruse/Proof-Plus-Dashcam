@@ -6,6 +6,7 @@ when Home Assistant actually renders the entity, so nothing streams on its own.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from homeassistant.components.image import ImageEntity
@@ -14,7 +15,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_EVENT_IMAGES, DEFAULT_EVENT_IMAGES, DOMAIN
+from .const import (
+    CONF_ENABLE_LIVE,
+    CONF_EVENT_IMAGES,
+    DEFAULT_EVENT_IMAGES,
+    DOMAIN,
+)
 from .coordinator import ProofCoordinator
 from .entity import ProofEntity
 
@@ -44,7 +50,93 @@ async def async_setup_entry(
         for device_id in coordinator.data
         for position in range(recent)
     )
+    # A still from each camera, captured once when the card first renders and
+    # then left alone. Needs the live session, so only when live view is on.
+    if entry.options.get(CONF_ENABLE_LIVE):
+        entities.extend(
+            ProofLiveSnapshotImage(hass, coordinator, device_id, index)
+            for device_id, device in coordinator.data.items()
+            for index in range(_camera_count(device))
+        )
     async_add_entities(entities)
+
+
+_SNAPSHOT_KEYS = {0: "front_snapshot", 1: "rear_snapshot"}
+# How long to wait for a frame from the camera we just asked for.
+_CAPTURE_TIMEOUT = 20
+
+
+class ProofLiveSnapshotImage(ProofEntity, ImageEntity):
+    """A still from one camera, taken on demand rather than on a timer.
+
+    Home Assistant asks an image entity for its picture when the card is first
+    shown and then caches it until the entity says it changed. That is exactly
+    the behaviour wanted here: one capture when the dashboard loads, and no
+    further cellular traffic until the refresh button is pressed.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: ProofCoordinator,
+        device_id: str,
+        cam_index: int,
+    ) -> None:
+        ProofEntity.__init__(self, coordinator, device_id)
+        ImageEntity.__init__(self, hass)
+        self._cam_index = cam_index
+        self._attr_translation_key = _SNAPSHOT_KEYS.get(cam_index, "front_snapshot")
+        self._attr_unique_id = f"{device_id}_snapshot_{cam_index}"
+        self._data: bytes | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Make this snapshot reachable by the refresh button."""
+        await super().async_added_to_hass()
+        self.coordinator.snapshot_images.setdefault(self._device_id, []).append(self)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop advertising this snapshot."""
+        images = self.coordinator.snapshot_images.get(self._device_id) or []
+        if self in images:
+            images.remove(self)
+        await super().async_will_remove_from_hass()
+
+    async def async_capture(self) -> bool:
+        """Take a fresh still from this camera. True if one was captured."""
+        from .camera import _frame_to_jpeg
+
+        session = self.coordinator.live_session(self.hass, self._device_id)
+        key = f"snapshot:{self._device_id}:{self._cam_index}"
+        session.add_watcher(key)
+        try:
+            existing = session.client
+            seq_before = existing.frame_seq if existing is not None else 0
+            client = await session.async_acquire(self._cam_index)
+            if client is None:
+                return False
+            deadline = self.hass.loop.time() + _CAPTURE_TIMEOUT
+            while self.hass.loop.time() < deadline:
+                frame = client.latest_frame
+                # Only accept a frame decoded after the camera was selected,
+                # otherwise this is the other camera's picture.
+                if frame is not None and client.frame_seq > seq_before:
+                    self._data = await self.hass.async_add_executor_job(
+                        _frame_to_jpeg, frame
+                    )
+                    self._attr_image_last_updated = dt_util.utcnow()
+                    self.async_write_ha_state()
+                    return True
+                await asyncio.sleep(0.1)
+            return False
+        finally:
+            # Let the dashcam go back to sleep once nothing else is watching.
+            await session.async_release(key)
+
+    async def async_image(self) -> bytes | None:
+        """Serve the still, capturing one the first time it is asked for."""
+        if self._data is None:
+            await self.async_capture()
+        return self._data
 
 
 class ProofEventImage(ProofEntity, ImageEntity):

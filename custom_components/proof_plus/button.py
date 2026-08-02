@@ -9,7 +9,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONF_ENABLE_LIVE, CONF_ENABLE_SNAPSHOT, DOMAIN
 from .coordinator import ProofCoordinator
 from .entity import ProofEntity
 
@@ -26,6 +26,12 @@ SELF_CHECK = ButtonEntityDescription(
     translation_key="self_check",
     icon="mdi:clipboard-check",
     entity_category=EntityCategory.DIAGNOSTIC,
+)
+
+REFRESH_SNAPSHOTS = ButtonEntityDescription(
+    key="refresh_snapshots",
+    translation_key="refresh_snapshots",
+    icon="mdi:camera-retake",
 )
 
 REFRESH_SETTINGS = ButtonEntityDescription(
@@ -46,7 +52,38 @@ async def async_setup_entry(
         entities.append(ProofLocateButton(hass, coordinator, device_id))
         entities.append(ProofRefreshSettingsButton(hass, coordinator, device_id))
         entities.append(ProofSelfCheckButton(coordinator, device_id))
+        # Only useful when there are snapshot images to refresh.
+        if entry.options.get(CONF_ENABLE_LIVE) and entry.options.get(
+            CONF_ENABLE_SNAPSHOT
+        ):
+            entities.append(ProofRefreshSnapshotsButton(hass, coordinator, device_id))
     async_add_entities(entities)
+
+
+class ProofRefreshSnapshotsButton(ProofEntity, ButtonEntity):
+    """Take a new still from each camera.
+
+    The snapshots are captured once when the dashboard first shows them and
+    then left alone, because every capture wakes the dashcam and spends its
+    mobile data. This is how the user asks for a newer one.
+    """
+
+    def __init__(
+        self, hass: HomeAssistant, coordinator: ProofCoordinator, device_id: str
+    ) -> None:
+        super().__init__(coordinator, device_id)
+        self.hass = hass
+        self.entity_description = REFRESH_SNAPSHOTS
+        self._attr_unique_id = f"{device_id}_refresh_snapshots"
+
+    async def async_press(self) -> None:
+        """Recapture every snapshot image belonging to this dashcam."""
+        images = self.coordinator.snapshot_images.get(self._device_id) or []
+        for entity in images:
+            if not await entity.async_capture():
+                _LOGGER.warning(
+                    "Could not refresh the snapshot for %s", entity.entity_id
+                )
 
 
 class ProofLocateButton(ProofEntity, ButtonEntity):

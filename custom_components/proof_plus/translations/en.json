@@ -151,6 +151,12 @@
       },
       "last_event_rear": {
         "name": "Last event rear"
+      },
+      "front_snapshot": {
+        "name": "Front snapshot"
+      },
+      "rear_snapshot": {
+        "name": "Rear snapshot"
       }
     },
     "button": {
@@ -162,6 +168,9 @@
       },
       "self_check": {
         "name": "Run self-check"
+      },
+      "refresh_snapshots": {
+        "name": "Refresh snapshots"
       }
     },
     "switch": {
