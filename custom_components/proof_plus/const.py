@@ -16,6 +16,7 @@ CONF_SETTINGS_INTERVAL = "settings_interval"
 CONF_ALBUM_LIMIT = "album_limit"
 CONF_SELFCHECK_INTERVAL = "selfcheck_interval"
 CONF_EVENT_IMAGES = "event_images"
+CONF_SNAPSHOT_INTERVAL = "snapshot_interval"
 
 DEFAULT_SCAN_INTERVAL = 30  # seconds; the device itself reports every ~30s
 MIN_SCAN_INTERVAL = 10
@@ -63,3 +64,9 @@ GSM_WEAK_DBM = -104
 # can show them as a grid. 0 turns the grid off.
 DEFAULT_EVENT_IMAGES = 6
 MAX_EVENT_IMAGES = 12
+
+# How often the snapshots refresh while the auto-refresh switch is on, in
+# minutes. Each refresh wakes the dashcam and spends its mobile data, so this
+# is deliberately not frequent.
+DEFAULT_SNAPSHOT_INTERVAL = 15
+MIN_SNAPSHOT_INTERVAL = 1

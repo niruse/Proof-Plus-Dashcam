@@ -94,8 +94,14 @@ running until closed, which uses cellular data continuously).
 A live card is blank until you open it, because the dashcam only streams while it is being watched.
 So with live view **and** event snapshots enabled, each camera also gets a **snapshot** image: a
 still taken the first time the card is shown and then kept, so the dashboard has a picture on it
-without holding a stream open. Nothing refreshes on a timer — every capture wakes the dashcam and
-spends its mobile data — so a **Refresh snapshots** button takes a new pair when you want one.
+without holding a stream open. Nothing refreshes on a timer by default — every capture wakes the
+dashcam and spends its mobile data — so a **Refresh snapshots** button takes a new pair when you
+want one.
+
+If you would rather they keep themselves current, the **Auto refresh snapshots** switch does that
+on a timer, every 15 minutes by default (change it under **Configure**). It is off to begin with and
+remembers what you chose across restarts, so it never quietly starts spending mobile data on its
+own. The switch's `interval_minutes` attribute shows the rate in use.
 
 ## Example dashboard
 

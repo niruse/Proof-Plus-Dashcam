@@ -8,6 +8,7 @@ the device stream over its cellular connection.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
@@ -15,8 +16,16 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN
+from .const import (
+    CONF_ENABLE_LIVE,
+    CONF_ENABLE_SNAPSHOT,
+    CONF_SNAPSHOT_INTERVAL,
+    DEFAULT_SNAPSHOT_INTERVAL,
+    DOMAIN,
+)
 from .coordinator import ProofCoordinator
 from .entity import ProofEntity
 
@@ -107,7 +116,88 @@ async def async_setup_entry(
             ProofAlertSwitch(coordinator, first_device, description)
             for description in ALERTS
         )
+    # Auto-refresh only makes sense when there are snapshots to refresh.
+    if entry.options.get(CONF_ENABLE_LIVE) and entry.options.get(CONF_ENABLE_SNAPSHOT):
+        minutes = entry.options.get(CONF_SNAPSHOT_INTERVAL, DEFAULT_SNAPSHOT_INTERVAL)
+        entities.extend(
+            ProofAutoSnapshotSwitch(hass, coordinator, device_id, minutes)
+            for device_id in coordinator.data
+        )
     async_add_entities(entities)
+
+
+class ProofAutoSnapshotSwitch(ProofEntity, SwitchEntity, RestoreEntity):
+    """Keep the dashboard snapshots refreshing on a timer.
+
+    Off by default, and remembered across restarts: every refresh wakes the
+    dashcam and spends its mobile data, so this has to be a deliberate choice
+    rather than something that quietly switches itself back on.
+    """
+
+    _attr_translation_key = "auto_snapshot"
+    _attr_icon = "mdi:camera-timer"
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: ProofCoordinator,
+        device_id: str,
+        minutes: int,
+    ) -> None:
+        super().__init__(coordinator, device_id)
+        self.hass = hass
+        self._minutes = max(1, int(minutes or DEFAULT_SNAPSHOT_INTERVAL))
+        self._attr_unique_id = f"{device_id}_auto_snapshot"
+        self._attr_is_on = False
+        self._cancel: Any = None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Show how often it refreshes, since that is set in the options."""
+        return {"interval_minutes": self._minutes}
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last choice and resume refreshing if it was on."""
+        await super().async_added_to_hass()
+        if (last := await self.async_get_last_state()) is not None:
+            self._attr_is_on = last.state == "on"
+        if self._attr_is_on:
+            self._schedule()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop the timer so it cannot outlive the entity."""
+        self._unschedule()
+        await super().async_will_remove_from_hass()
+
+    def _schedule(self) -> None:
+        if self._cancel is not None:
+            return
+        self._cancel = async_track_time_interval(
+            self.hass, self._async_refresh, timedelta(minutes=self._minutes)
+        )
+
+    def _unschedule(self) -> None:
+        if self._cancel is not None:
+            self._cancel()
+            self._cancel = None
+
+    async def _async_refresh(self, _now: Any) -> None:
+        """Take a new still from each camera."""
+        for image in self.coordinator.snapshot_images.get(self._device_id) or []:
+            await image.async_capture()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Start refreshing, and take one straight away."""
+        self._attr_is_on = True
+        self._schedule()
+        self.async_write_ha_state()
+        await self._async_refresh(None)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Stop refreshing; the last pictures stay on the dashboard."""
+        self._attr_is_on = False
+        self._unschedule()
+        self.async_write_ha_state()
 
 
 class ProofAlertSwitch(ProofEntity, SwitchEntity):

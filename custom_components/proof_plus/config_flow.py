@@ -39,12 +39,15 @@ from .const import (
     CONF_SCAN_INTERVAL,
     CONF_SELFCHECK_INTERVAL,
     CONF_SETTINGS_INTERVAL,
+    CONF_SNAPSHOT_INTERVAL,
     DEFAULT_ALBUM_LIMIT,
     DEFAULT_EVENT_IMAGES,
     DEFAULT_LIVE_KEEPALIVE,
     DEFAULT_SETTINGS_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SELFCHECK_INTERVAL,
+    DEFAULT_SNAPSHOT_INTERVAL,
+    MIN_SNAPSHOT_INTERVAL,
     DOMAIN,
     MAX_ALBUM_LIMIT,
     MAX_EVENT_IMAGES,
@@ -238,6 +241,7 @@ class ProofOptionsFlow(OptionsFlow):
                     ): vol.All(vol.Coerce(int), vol.Range(min=0)),
                     vol.Required(
                         CONF_SETTINGS_INTERVAL,
+    CONF_SNAPSHOT_INTERVAL,
                         default=options.get(
                             CONF_SETTINGS_INTERVAL, DEFAULT_SETTINGS_INTERVAL
                         ),
@@ -248,6 +252,14 @@ class ProofOptionsFlow(OptionsFlow):
                             CONF_SELFCHECK_INTERVAL, DEFAULT_SELFCHECK_INTERVAL
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=168)),
+                    vol.Required(
+                        CONF_SNAPSHOT_INTERVAL,
+                        default=options.get(
+                            CONF_SNAPSHOT_INTERVAL, DEFAULT_SNAPSHOT_INTERVAL
+                        ),
+                    ): vol.All(
+                        vol.Coerce(int), vol.Range(min=MIN_SNAPSHOT_INTERVAL, max=1440)
+                    ),
                     vol.Required(
                         CONF_EVENT_IMAGES,
                         default=options.get(CONF_EVENT_IMAGES, DEFAULT_EVENT_IMAGES),

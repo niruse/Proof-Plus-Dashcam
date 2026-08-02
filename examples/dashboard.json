@@ -40,8 +40,18 @@
               "name": "Take new photos"
             },
             {
+              "type": "tile",
+              "entity": "switch.YOUR_DEVICE_auto_refresh_snapshots",
+              "name": "Auto refresh",
+              "features": [
+                {
+                  "type": "toggle"
+                }
+              ]
+            },
+            {
               "type": "markdown",
-              "content": "Photos are taken once when this page loads — use **Take new photos** for a fresh pair. Live video below streams over the dashcam's own mobile data and only while a camera is open, and it can show one camera at a time."
+              "content": "Photos are taken once when this page loads — use **Take new photos** for a fresh pair, or switch on **Auto refresh** to keep them updating. Live video below streams over the dashcam's own mobile data and only while a camera is open, and it can show one camera at a time."
             },
             {
               "type": "heading",
