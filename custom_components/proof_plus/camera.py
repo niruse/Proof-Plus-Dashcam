@@ -36,7 +36,13 @@ from .webrtc import ProofWebRTCClient
 
 _LOGGER = logging.getLogger(__name__)
 
-FRAME_WAIT_TIMEOUT = 15
+# A cold capture has to negotiate WebRTC from scratch — ICE, TURN and the
+# dashcam waking up — so this has to be generous or the very first picture
+# after a restart gives up and the card shows nothing.
+FRAME_WAIT_TIMEOUT = 45
+
+# The dashcam needs a moment between sessions before it will accept a new one.
+SESSION_RETRY_DELAY = 4
 
 
 def _camera_count(device: dict[str, Any]) -> int:
@@ -106,19 +112,37 @@ class DeviceLiveSession:
         """Return a client streaming the requested camera, starting it if needed."""
         async with self._lock:
             if self._client is None:
-                client = ProofWebRTCClient(
-                    async_get_clientsession(self._hass),
-                    self._coordinator.client,
-                    self._device_id,
-                    camera_index=cam_index,
-                )
-                try:
-                    await client.async_start()
-                except Exception as err:  # noqa: BLE001
-                    _LOGGER.warning(
-                        "Could not start live view for %s: %s", self._device_id, err
+                # The dashcam refuses a new session while it still considers the
+                # previous one open — which is exactly the situation right after
+                # Home Assistant restarts. One retry after a short pause turns
+                # that transient refusal into a picture instead of an error.
+                client = None
+                for attempt in range(2):
+                    candidate = ProofWebRTCClient(
+                        async_get_clientsession(self._hass),
+                        self._coordinator.client,
+                        self._device_id,
+                        camera_index=cam_index,
                     )
-                    await client.async_stop()
+                    try:
+                        await candidate.async_start()
+                    except Exception as err:  # noqa: BLE001
+                        await candidate.async_stop()
+                        if attempt == 0:
+                            _LOGGER.debug(
+                                "Live view for %s refused (%s); retrying",
+                                self._device_id, err,
+                            )
+                            await asyncio.sleep(SESSION_RETRY_DELAY)
+                            continue
+                        _LOGGER.warning(
+                            "Could not start live view for %s: %s",
+                            self._device_id, err,
+                        )
+                        return None
+                    client = candidate
+                    break
+                if client is None:
                     return None
                 self._client = client
                 self._current_camera = cam_index
@@ -175,6 +199,11 @@ class ProofCamera(ProofEntity, Camera):
         self._sessions: dict[str, Any] = {}
         self._session = coordinator.live_session(hass, device_id)
         self._watch_key = f"{device_id}:{cam_index}"
+        # The last still we produced, and how many times we had to wake the
+        # dashcam to get one. The counter is surfaced as an attribute so this
+        # cannot silently start costing mobile data again.
+        self._still: bytes | None = None
+        self._captures = 0
 
     # --- device session lifecycle ------------------------------------------
 
@@ -208,28 +237,39 @@ class ProofCamera(ProofEntity, Camera):
 
     # --- still images -------------------------------------------------------
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose how often the dashcam was woken for a still."""
+        return {"captures": self._captures, "has_still": self._still is not None}
+
     def _cached_snapshot(self) -> bytes | None:
-        """The still already captured for this camera, if any."""
+        """The still already on hand for this camera, if any.
+
+        Prefer the snapshot entity's copy, since the refresh button and the
+        auto-refresh switch keep that one current.
+        """
         for image in self.coordinator.snapshot_images.get(self._device_id) or []:
-            if image.cam_index == self._cam_index:
+            if image.cam_index == self._cam_index and image.data is not None:
                 return image.data
-        return None
+        return self._still
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return a current still frame (thumbnails, snapshots, automations)."""
-        # A picture card asks for a still repeatedly. Opening a session for each
-        # one would wake the dashcam and spend its mobile data, so when nothing
-        # is streaming, serve the snapshot that has already been taken. Tapping
-        # the card starts the live stream, which is where a live frame belongs.
-        existing = self._session.client
-        if existing is None and (cached := self._cached_snapshot()) is not None:
+        # A picture card asks for a still every few seconds for as long as it
+        # is on screen. Answering each one from the device would hold the
+        # stream open indefinitely over the dashcam's own mobile data, so a
+        # still is always served from the picture already on hand. Freshness is
+        # the user's call: the refresh button and the auto-refresh switch. Live
+        # video is a separate path and is unaffected.
+        if (cached := self._cached_snapshot()) is not None:
             return cached
 
-        # Note the frame count before acquiring: if acquiring switches camera
-        # it drops the cached frame, and we must not hand back a picture that
-        # was decoded from the camera we just switched away from.
+        # Nothing on hand yet, so take one. Note the frame count first: if
+        # acquiring switches camera it drops the cached frame, and we must not
+        # hand back a picture decoded from the camera we switched away from.
+        existing = self._session.client
         seq_before = existing.frame_seq if existing is not None else 0
 
         client = await self._async_ensure_client()
@@ -240,7 +280,12 @@ class ProofCamera(ProofEntity, Camera):
         while self.hass.loop.time() < deadline:
             frame = client.latest_frame
             if frame is not None and client.frame_seq > seq_before:
-                return await self.hass.async_add_executor_job(_frame_to_jpeg, frame)
+                still = await self.hass.async_add_executor_job(_frame_to_jpeg, frame)
+                # Keep it: a picture card asks again every few seconds, and
+                # without this every one of those would wake the dashcam.
+                self._still = still
+                self._captures += 1
+                return still
             await asyncio.sleep(0.1)
         return None
 
