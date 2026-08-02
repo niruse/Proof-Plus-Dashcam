@@ -18,8 +18,10 @@
             },
             {
               "type": "picture-entity",
-              "entity": "image.YOUR_DEVICE_front_snapshot",
+              "entity": "camera.YOUR_DEVICE_live_view",
               "name": "Front",
+              "camera_view": "auto",
+              "show_name": true,
               "show_state": false,
               "tap_action": {
                 "action": "more-info"
@@ -27,8 +29,10 @@
             },
             {
               "type": "picture-entity",
-              "entity": "image.YOUR_DEVICE_rear_snapshot",
+              "entity": "camera.YOUR_DEVICE_rear_camera",
               "name": "Rear",
+              "camera_view": "auto",
+              "show_name": true,
               "show_state": false,
               "tap_action": {
                 "action": "more-info"
@@ -51,35 +55,7 @@
             },
             {
               "type": "markdown",
-              "content": "Photos are taken once when this page loads — use **Take new photos** for a fresh pair, or switch on **Auto refresh** to keep them updating. Live video below streams over the dashcam's own mobile data and only while a camera is open, and it can show one camera at a time."
-            },
-            {
-              "type": "heading",
-              "heading": "Live video",
-              "icon": "mdi:video",
-              "heading_style": "subtitle"
-            },
-            {
-              "type": "picture-entity",
-              "entity": "camera.YOUR_DEVICE_live_view",
-              "name": "Front",
-              "camera_view": "live",
-              "show_name": true,
-              "show_state": false,
-              "tap_action": {
-                "action": "more-info"
-              }
-            },
-            {
-              "type": "picture-entity",
-              "entity": "camera.YOUR_DEVICE_rear_camera",
-              "name": "Rear",
-              "camera_view": "live",
-              "show_name": true,
-              "show_state": false,
-              "tap_action": {
-                "action": "more-info"
-              }
+              "content": "Each card shows a photo — tap it to watch live. The dashcam streams one camera at a time over its own mobile data, so opening one stops the other. Photos are taken when this page first loads; use **Take new photos**, or switch on **Auto refresh**."
             }
           ]
         },

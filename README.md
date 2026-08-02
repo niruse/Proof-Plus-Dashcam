@@ -91,10 +91,11 @@ running until closed, which uses cellular data continuously).
 
 ### Snapshots
 
-A live card is blank until you open it, because the dashcam only streams while it is being watched.
-So with live view **and** event snapshots enabled, each camera also gets a **snapshot** image: a
-still taken the first time the card is shown and then kept, so the dashboard has a picture on it
-without holding a stream open. Nothing refreshes on a timer by default — every capture wakes the
+A live card would be blank until you open it, because the dashcam only streams while it is being
+watched. So with live view **and** event snapshots enabled, each camera also gets a **snapshot**
+image: a still taken the first time it is asked for and then kept. The camera entity serves that
+still too, which is what makes a picture card work — it shows the photo straight away and starts
+the stream only when you tap it, instead of waking the dashcam every time the card is drawn. Nothing refreshes on a timer by default — every capture wakes the
 dashcam and spends its mobile data — so a **Refresh snapshots** button takes a new pair when you
 want one.
 
@@ -116,7 +117,9 @@ in, and replace `YOUR_DEVICE` with your dashcam's id (the number in your entity 
 
 ### Live
 
-Both cameras as stills plus the live streams, with status and a speed trend alongside.
+One card per camera: it shows a photo, and tapping it plays live video. The dashcam streams a
+single camera at a time, so two live tiles side by side would both end up showing whichever one
+won — one card each keeps it honest.
 
 ![Live tab](examples/images/dashboard-live.png)
 

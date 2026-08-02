@@ -208,14 +208,28 @@ class ProofCamera(ProofEntity, Camera):
 
     # --- still images -------------------------------------------------------
 
+    def _cached_snapshot(self) -> bytes | None:
+        """The still already captured for this camera, if any."""
+        for image in self.coordinator.snapshot_images.get(self._device_id) or []:
+            if image.cam_index == self._cam_index:
+                return image.data
+        return None
+
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return a current still frame (thumbnails, snapshots, automations)."""
+        # A picture card asks for a still repeatedly. Opening a session for each
+        # one would wake the dashcam and spend its mobile data, so when nothing
+        # is streaming, serve the snapshot that has already been taken. Tapping
+        # the card starts the live stream, which is where a live frame belongs.
+        existing = self._session.client
+        if existing is None and (cached := self._cached_snapshot()) is not None:
+            return cached
+
         # Note the frame count before acquiring: if acquiring switches camera
         # it drops the cached frame, and we must not hand back a picture that
         # was decoded from the camera we just switched away from.
-        existing = self._session.client
         seq_before = existing.frame_seq if existing is not None else 0
 
         client = await self._async_ensure_client()

@@ -7,6 +7,7 @@ when Home Assistant actually renders the entity, so nothing streams on its own.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from homeassistant.components.image import ImageEntity
@@ -23,6 +24,8 @@ from .const import (
 )
 from .coordinator import ProofCoordinator
 from .entity import ProofEntity
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _camera_count(device: dict[str, Any]) -> int:
@@ -62,8 +65,10 @@ async def async_setup_entry(
 
 
 _SNAPSHOT_KEYS = {0: "front_snapshot", 1: "rear_snapshot"}
-# How long to wait for a frame from the camera we just asked for.
-_CAPTURE_TIMEOUT = 20
+# How long to wait for a frame from the camera we just asked for. The first
+# capture after a restart has to negotiate WebRTC from cold — ICE, TURN and the
+# device's own wake-up — so this has to be generous or it gives up too early.
+_CAPTURE_TIMEOUT = 45
 
 
 class ProofLiveSnapshotImage(ProofEntity, ImageEntity):
@@ -88,6 +93,28 @@ class ProofLiveSnapshotImage(ProofEntity, ImageEntity):
         self._attr_translation_key = _SNAPSHOT_KEYS.get(cam_index, "front_snapshot")
         self._attr_unique_id = f"{device_id}_snapshot_{cam_index}"
         self._data: bytes | None = None
+        # Surfaced as an attribute: this box keeps no log file, so a failed
+        # capture would otherwise be invisible.
+        self._last_error: str | None = None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say whether the last capture worked, and why not if it did not."""
+        return {
+            "camera": "Rear" if self._cam_index else "Front",
+            "has_image": self._data is not None,
+            "last_error": self._last_error,
+        }
+
+    @property
+    def cam_index(self) -> int:
+        """Which camera this snapshot belongs to."""
+        return self._cam_index
+
+    @property
+    def data(self) -> bytes | None:
+        """The last captured still, if there is one."""
+        return self._data
 
     async def async_added_to_hass(self) -> None:
         """Make this snapshot reachable by the refresh button."""
@@ -103,6 +130,18 @@ class ProofLiveSnapshotImage(ProofEntity, ImageEntity):
 
     async def async_capture(self) -> bool:
         """Take a fresh still from this camera. True if one was captured."""
+        try:
+            captured = await self._async_capture()
+        except Exception as err:  # noqa: BLE001
+            # Never let this reach the image endpoint as a 500; a dashcam that
+            # is asleep or busy is a normal condition, not a server fault.
+            self._last_error = f"{type(err).__name__}: {err}"
+            _LOGGER.debug("Snapshot failed for %s: %s", self.entity_id, err)
+            return False
+        self._last_error = None if captured else "no frame arrived in time"
+        return captured
+
+    async def _async_capture(self) -> bool:
         from .camera import _frame_to_jpeg
 
         session = self.coordinator.live_session(self.hass, self._device_id)
