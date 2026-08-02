@@ -4,10 +4,10 @@
   "codeowners": ["@niruse"],
   "config_flow": true,
   "after_dependencies": ["media_source"],
-  "documentation": "https://github.com/niruse/Proof-Plus",
+  "documentation": "https://github.com/niruse/Proof-Plus-Dashcam",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/niruse/Proof-Plus/issues",
+  "issue_tracker": "https://github.com/niruse/Proof-Plus-Dashcam/issues",
   "requirements": ["aiortc==1.15.0"],
   "version": "1.0.0"
 }

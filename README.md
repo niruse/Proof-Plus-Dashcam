@@ -45,7 +45,7 @@ unless you turn it on:
 ### HACS (recommended)
 
 1. HACS → Integrations → ⋮ → **Custom repositories**
-2. Add `https://github.com/niruse/Proof-Plus` as an **Integration**
+2. Add `https://github.com/niruse/Proof-Plus-Dashcam` as an **Integration**
 3. Install **Proof Plus** and restart Home Assistant
 
 ### Manual
