@@ -17,11 +17,8 @@
         }
       },
       "reauth_confirm": {
-        "title": "Re-authenticate Proof",
-        "description": "The Proof session for {username} has expired. Confirm your password and a new SMS code will be sent.",
-        "data": {
-          "password": "Password"
-        }
+        "title": "Reconnect Proof",
+        "description": "The Proof session for {username} has expired — the cloud allows one login per account, so this happens when you sign in on the phone or after a few days. Press Submit to text a fresh code; your password is remembered."
       }
     },
     "error": {

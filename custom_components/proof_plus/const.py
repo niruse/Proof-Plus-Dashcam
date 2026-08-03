@@ -5,6 +5,8 @@ DOMAIN = "proof_plus"
 
 CONF_CODE = "code"
 CONF_REFRESH_TOKEN = "refresh_token"
+CONF_ACCESS_TOKEN = "access_token"
+CONF_TOKEN_EXPIRES = "token_expires_at"
 
 # Options (all default off — nothing activates unless the user opts in).
 CONF_SCAN_INTERVAL = "scan_interval"

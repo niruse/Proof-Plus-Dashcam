@@ -29,6 +29,7 @@ from .api import (
 )
 from .const import (
     CONF_ALBUM_LIMIT,
+    CONF_ACCESS_TOKEN,
     CONF_CODE,
     CONF_ENABLE_LIVE,
     CONF_ENABLE_MEDIA_BROWSER,
@@ -37,6 +38,7 @@ from .const import (
     CONF_MESSAGE_IMAGES,
     CONF_LIVE_KEEPALIVE,
     CONF_REFRESH_TOKEN,
+    CONF_TOKEN_EXPIRES,
     CONF_SCAN_INTERVAL,
     CONF_SELFCHECK_INTERVAL,
     CONF_SETTINGS_INTERVAL,
@@ -171,7 +173,12 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
                 description_placeholders={CONF_USERNAME: self._data[CONF_USERNAME]},
             )
 
-        data = {**self._data, CONF_REFRESH_TOKEN: self._client.refresh_token}
+        data = {
+            **self._data,
+            CONF_REFRESH_TOKEN: self._client.refresh_token,
+            CONF_ACCESS_TOKEN: self._client.access_token,
+            CONF_TOKEN_EXPIRES: self._client.token_expires_at,
+        }
 
         if self._reauth_entry is not None:
             return self.async_update_reload_and_abort(self._reauth_entry, data=data)
@@ -192,11 +199,27 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Confirm the password, then send a new SMS code."""
+        """Re-establish the session with a fresh SMS code.
+
+        The password is already stored, so there is nothing to re-type: the
+        first screen is a plain confirmation, and pressing it texts a new code
+        and asks only for that. The code is sent when the user is ready to type
+        it rather than the moment the session dropped, because SMS codes expire.
+        If the stored password has since changed, async_step_code sends us back
+        here with the password field, and this time the corrected one is used.
+        """
         assert self._reauth_entry is not None
         if user_input is None:
-            return self._show_credentials_form()
-        data = {**self._reauth_entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]}
+            return self.async_show_form(
+                step_id="reauth_confirm",
+                data_schema=vol.Schema({}),
+                description_placeholders={
+                    CONF_USERNAME: self._reauth_entry.data[CONF_USERNAME]
+                },
+            )
+        data = dict(self._reauth_entry.data)
+        if CONF_PASSWORD in user_input:
+            data[CONF_PASSWORD] = user_input[CONF_PASSWORD]
         return await self._async_request_code(data)
 
     @staticmethod

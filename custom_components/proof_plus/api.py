@@ -96,16 +96,20 @@ class ProofApiClient:
         password: str,
         base_url: str = DEFAULT_BASE_URL,
         refresh_token: str | None = None,
-        on_refresh_token: Callable[[str], None] | None = None,
+        on_tokens: Callable[[dict[str, Any]], None] | None = None,
+        access_token: str | None = None,
+        token_expires_at: float = 0.0,
     ) -> None:
         self._session = session
         self._username = username
         self._password = password
         self._base_url = base_url.rstrip("/")
         self._refresh_token = refresh_token
-        self._on_refresh_token = on_refresh_token
-        self._access_token: str | None = None
-        self._token_expires_at: float = 0.0
+        self._on_tokens = on_tokens
+        self._access_token = access_token
+        # Wall-clock expiry, so a still-valid token survives a restart and we
+        # do not lean on the refresh grant more than necessary.
+        self._token_expires_at: float = token_expires_at
         self._token_lock = asyncio.Lock()
         self.uid: str | None = None
         self._im_ip: str | None = None
@@ -115,6 +119,16 @@ class ProofApiClient:
     def refresh_token(self) -> str | None:
         """Return the current refresh token."""
         return self._refresh_token
+
+    @property
+    def access_token(self) -> str | None:
+        """Return the current access token, if any."""
+        return self._access_token
+
+    @property
+    def token_expires_at(self) -> float:
+        """Wall-clock time the access token expires."""
+        return self._token_expires_at
 
     async def _async_post_json(self, path: str, payload: dict[str, Any]) -> Any:
         try:
@@ -165,14 +179,23 @@ class ProofApiClient:
             )
 
         self._access_token = payload["access_token"]
-        self._token_expires_at = time.monotonic() + float(payload.get("expires_in", 3600))
+        self._token_expires_at = time.time() + float(payload.get("expires_in", 3600))
         self.uid = payload.get("uid")
         self._im_ip = payload.get("im_ip", self._im_ip)
         self._ws_port = payload.get("ws_port", self._ws_port)
-        if (token := payload.get("refresh_token")) and token != self._refresh_token:
+        if token := payload.get("refresh_token"):
             self._refresh_token = token
-            if self._on_refresh_token:
-                self._on_refresh_token(token)
+        # Persist the whole set: the access token lets a restart skip the
+        # refresh grant, which matters because that grant is not always
+        # honoured even right after a successful login.
+        if self._on_tokens:
+            self._on_tokens(
+                {
+                    "access_token": self._access_token,
+                    "refresh_token": self._refresh_token,
+                    "token_expires_at": self._token_expires_at,
+                }
+            )
         return payload
 
     async def async_login_with_code(self, code: str) -> dict[str, Any]:
@@ -201,11 +224,20 @@ class ProofApiClient:
             {"grant_type": "refresh_token", "refresh_token": self._refresh_token}
         )
 
+    async def async_establish(self) -> None:
+        """Make sure a usable access token exists for setup.
+
+        Reuse the stored access token while it is still valid, and only fall
+        back to the refresh grant when it has expired — the refresh grant is
+        the fragile part, so we avoid it when we do not need it.
+        """
+        await self._async_ensure_token()
+
     async def _async_ensure_token(self) -> str:
         async with self._token_lock:
             if (
                 self._access_token is None
-                or time.monotonic() > self._token_expires_at - TOKEN_EXPIRY_MARGIN
+                or time.time() > self._token_expires_at - TOKEN_EXPIRY_MARGIN
             ):
                 await self.async_refresh()
             assert self._access_token is not None

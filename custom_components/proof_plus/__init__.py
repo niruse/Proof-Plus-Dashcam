@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
@@ -14,7 +15,9 @@ from .api import ProofApiClient, ProofAuthError, ProofConnectionError
 from .const import (
     CONF_ENABLE_LIVE,
     CONF_ENABLE_SNAPSHOT,
+    CONF_ACCESS_TOKEN,
     CONF_REFRESH_TOKEN,
+    CONF_TOKEN_EXPIRES,
     CONF_SELFCHECK_INTERVAL,
     CONF_SETTINGS_INTERVAL,
     DEFAULT_SELFCHECK_INTERVAL,
@@ -40,10 +43,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Proof Plus from a config entry."""
 
     @callback
-    def _store_refresh_token(token: str) -> None:
-        """Persist a rotated refresh token so restarts keep working."""
+    def _store_tokens(tokens: dict[str, Any]) -> None:
+        """Persist the current tokens so a restart keeps working."""
         hass.config_entries.async_update_entry(
-            entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
+            entry,
+            data={
+                **entry.data,
+                CONF_ACCESS_TOKEN: tokens.get("access_token"),
+                CONF_REFRESH_TOKEN: tokens.get("refresh_token"),
+                CONF_TOKEN_EXPIRES: tokens.get("token_expires_at"),
+            },
         )
 
     client = ProofApiClient(
@@ -51,11 +60,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
-        on_refresh_token=_store_refresh_token,
+        on_tokens=_store_tokens,
+        access_token=entry.data.get(CONF_ACCESS_TOKEN),
+        token_expires_at=entry.data.get(CONF_TOKEN_EXPIRES) or 0.0,
     )
 
     try:
-        await client.async_refresh()
+        await client.async_establish()
     except ProofAuthError as err:
         # Only a fresh SMS login can recover this.
         raise ConfigEntryAuthFailed(str(err)) from err
