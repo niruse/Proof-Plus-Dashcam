@@ -108,9 +108,43 @@ class DeviceLiveSession:
         self._watchers.discard(key)
         return not self._watchers
 
-    async def async_acquire(self, cam_index: int) -> ProofWebRTCClient | None:
-        """Return a client streaming the requested camera, starting it if needed."""
+    def watching_camera(self, cam_index: int, besides: str) -> bool:
+        """Whether a viewer other than ``besides`` is watching that camera.
+
+        Camera entities register as ``<device>:<camera>``; other users of the
+        session (the RTSP stream, a settings read) use their own keys.
+        """
+        suffix = f":{cam_index}"
+        return any(
+            key != besides and key.endswith(suffix) for key in self._watchers
+        )
+
+    def viewer_camera(self) -> int | None:
+        """The camera a viewer (a camera entity or a snapshot) is watching, if any.
+
+        Their claims end in the camera number; the RTSP stream and the settings
+        controls use keys that do not.
+        """
+        for key in self._watchers:
+            tail = key.rsplit(":", 1)[-1]
+            if tail.isdigit():
+                return int(tail)
+        return None
+
+    async def async_acquire(self, cam_index: int | None) -> ProofWebRTCClient | None:
+        """Return a client streaming the requested camera, starting it if needed.
+
+        ``None`` takes the session on whichever camera it is already showing,
+        for callers that only need the control channel (settings, storage).
+        """
         async with self._lock:
+            if self._client is not None and not self._client.alive:
+                # The connection failed underneath us; start again rather
+                # than hand out a dead session.
+                await self._client.async_stop()
+                self._client = None
+            if cam_index is None:
+                cam_index = self._current_camera if self._client else 0
             if self._client is None:
                 # The dashcam refuses a new session while it still considers the
                 # previous one open — which is exactly the situation right after
@@ -159,6 +193,17 @@ class DeviceLiveSession:
                 return
             await self._client.async_stop()
             self._client = None
+
+    async def async_restart(self) -> None:
+        """Drop a session that has stopped delivering; the next acquire reopens it.
+
+        Watchers keep their claims, so whoever still wants the picture gets a
+        fresh session rather than none.
+        """
+        async with self._lock:
+            if self._client is not None:
+                await self._client.async_stop()
+                self._client = None
 
     async def async_stop(self) -> None:
         """Close the session to the dashcam."""

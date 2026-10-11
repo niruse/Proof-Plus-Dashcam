@@ -150,6 +150,7 @@ async def async_setup_entry(
         entities.append(ProofSelfCheckSensor(coordinator, device_id))
         entities.append(ProofMessageSensor(coordinator, device_id))
         entities.append(ProofSelfCheckRunSensor(coordinator, device_id))
+        entities.append(ProofSessionSensor(coordinator, device_id))
         for key, store, field in (
             ("sd_card_free", "external_sd", "free"),
             ("sd_card_total", "external_sd", "total"),
@@ -304,6 +305,38 @@ class ProofSelfCheckRunSensor(ProofEntity, SensorEntity):
         """Return the time of the last run."""
         run = (self.coordinator.self_check.get(self._device_id) or {}).get("run")
         return dt_util.parse_datetime(run) if run else None
+
+
+class ProofSessionSensor(ProofEntity, SensorEntity):
+    """When the Proof cloud session runs out, and how renewing it went.
+
+    The cloud may refuse to renew the session, in which case it needs a new
+    SMS code about once a week; this shows when that is due.
+    """
+
+    _attr_translation_key = "session_expires"
+    _attr_icon = "mdi:account-clock"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: ProofCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_session_expires"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return when the current access token expires."""
+        expires_at = self.coordinator.client.token_expires_at
+        return dt_util.utc_from_timestamp(expires_at) if expires_at else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the last early-renewal attempt; this box keeps no log."""
+        attempt = self.coordinator.session_renew_attempt
+        return {
+            "renewal_attempted": attempt.isoformat() if attempt else None,
+            "renewal_result": self.coordinator.session_renew_result,
+        }
 
 
 class ProofSensor(ProofEntity, SensorEntity):

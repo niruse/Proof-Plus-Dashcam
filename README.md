@@ -41,6 +41,7 @@ unless you turn it on:
   by time and camera. Nothing is downloaded; a recording is fetched from the cloud only when you
   open it, and each folder lists the newest few (5 by default, configurable).
 - **Live view** — see the note under [Live view](#live-view) below.
+- **RTSP for an NVR** — see [RTSP for NVRs](#rtsp-for-nvrs) below.
 
 ## Installation
 
@@ -63,8 +64,15 @@ restart Home Assistant.
 3. Enter the verification code that is sent to that number by SMS
 4. All dashcams on the account are added automatically
 
-You only enter a code once — the session is then kept alive with the refresh token. If the
-session is ever rejected, Home Assistant asks you to re-authenticate with a new code.
+The Proof cloud's sign-in lasts about a week. In its last day the integration tries to renew it;
+if the cloud refuses — it has done so for some accounts — you get a notification and a
+**Re-authenticate** prompt on the integration while everything still works. Press it and enter the
+new SMS code (the password is remembered). The **Sign-in expires** diagnostic sensor shows when the
+next one is due, and its `renewal_result` attribute shows whether the last renewal was accepted.
+
+Re-authenticate rather than removing and re-adding the integration: a re-added entry starts with
+the options at their defaults (live view, snapshots and the media browser off). It does pick up the
+alert history, the last-read settings and the self-check result the removed entry left behind.
 
 The polling interval (default 30 s — the same rate the device reports at) can be changed under
 the integration's **Configure** options.
@@ -104,6 +112,67 @@ If you would rather they keep themselves current, the **Auto refresh snapshots**
 on a timer, every 15 minutes by default (change it under **Configure**). It is off to begin with and
 remembers what you chose across restarts, so it never quietly starts spending mobile data on its
 own. The switch's `interval_minutes` attribute shows the rate in use.
+
+## RTSP for NVRs
+
+The dashcam can be recorded by an NVR (HiLook/Hikvision, Frigate, Blue Iris, Synology Surveillance
+Station…) as an ordinary RTSP camera. Choose the mode when you add the integration, or later under
+**Configure → RTSP / NVR** or with the **RTSP stream** control on the dashcam's device page:
+
+| Mode | What the NVR gets |
+|---|---|
+| **Off** (default) | No RTSP server. |
+| **Only when triggered** | Live video while a trigger is active, and a still **standby picture** the rest of the time. |
+| **Always** | Live video whenever the NVR is connected. |
+
+Give the NVR `rtsp://<home-assistant-ip>:8564/proof_<device id>` for the front camera and
+`…/proof_<device id>_rear` for the rear one — the exact addresses are on the **RTSP / NVR** options
+page and in the `url` / `rear_url` attributes of `binary_sensor.<device>_rtsp_live_video`.
+Add a user name and password under the same page if the NVR should log in. Video only, H.264,
+960×540 at about 20 fps — passed through exactly as the dashcam encodes it, nothing is re-encoded.
+
+**Triggers** (only in *only when triggered*):
+
+- **Alerts** — the alert types you pick (vibration/anti-theft, collision and SOS by default) start
+  live video for 5 minutes; another alert in that time extends it. Alerts the cloud replays at login
+  are ignored.
+- **While driving** — from ignition on until ignition off, plus 2 minutes.
+- **The `RTSP live` switch** — holds live video on until you switch it off.
+- **The `proof_plus.rtsp_trigger` action** — live video for a number of minutes, from any
+  automation; `proof_plus.rtsp_stop` ends every trigger at once.
+
+`binary_sensor.<device>_rtsp_live_video` is on while live video is going out, and its attributes
+show which triggers are active, until when, and whether an NVR is connected.
+
+**The standby picture** is the last view from that camera, dimmed and labelled. It keeps the NVR
+connected between triggers — no video-loss alarms, nothing to reconnect — and it never changes while
+shown, so the jump to live video is what the NVR's motion detection records as the event. It costs
+about 2 KB/s.
+
+**Mobile data.** Live video runs over the dashcam's own mobile connection at roughly 750 kbit/s —
+about 340 MB an hour. *Always* means that for as long as the NVR is connected, and it keeps the dashcam
+awake while parked. go2rtc only pulls the stream while an RTSP client is connected, so with no NVR
+connected nothing reaches the dashcam in either mode.
+
+Good to know:
+
+- **Both cameras.** The dashcam streams **one camera at a time** over **one session** — it ignores
+  an offer for a second video track, or for its other address, and refuses a second session. So with
+  *Cameras on the stream* set to **both** (the default for a two-camera dashcam), each camera gets its
+  own address and NVR channel, and while live the dashcam switches between them every 15 seconds
+  (configurable). Each channel shows live video on its turn and its last picture, marked *Paused*,
+  in between; each switch costs about a second without video. Choose *front* or *rear* for one
+  camera that is live all the time instead.
+- The session is shared with the live-view cameras and the settings controls: a camera you open in
+  Home Assistant keeps the dashcam for as long as you watch, and the Proof phone app cannot open live
+  view while the stream is live.
+- Live video starts about 10 seconds after a trigger — the time it takes to reach the dashcam over
+  its mobile network — so the very start of an incident is in the dashcam's own event clip rather
+  than in the NVR.
+- The dashcam sends a keyframe only when asked, so the integration asks for one every two seconds
+  while live; NVRs need them to start recordings and to recover from a lost packet.
+- The RTSP server is a second instance of the go2rtc that ships with Home Assistant, on its own port
+  (8564 by default); Home Assistant's own instance only listens on localhost.
 
 ## Example dashboard
 
@@ -229,8 +298,10 @@ Established by analysing the mobile app's traffic and its (Hermes) JavaScript bu
 
 - **Login:** `POST /api/app/v5/user/sendcode` `{"pn":"<phone>","type":"login","locale":"en_us"}`,
   then `POST /oauth/token` with `grant_type=app`, `client_id=app`, `client_secret=api1234`,
-  `scope=SCOPE_READ`, `username`, `password` and `vcode`. `grant_type=refresh_token` renews it
-  (the `scope` parameter is required, otherwise it fails with `invalid_scope`).
+  `scope=SCOPE_READ`, `username`, `password` and `vcode`. The access token lasts about a week
+  (`expires_in` ≈ 604800). `grant_type=refresh_token` is meant to renew it (the `scope` parameter
+  is required, otherwise it fails with `invalid_scope`), but the cloud has been seen to answer
+  `invalid_grant` even right after a login — hence the early renewal and the prompt above.
 - **Request signing:** every `/api/app/v5/…` request carries an `x-sign` header equal to
   `base64( AES-128-CBC-PKCS7( "Proof|<epoch_ms>|<version>" ) )` with a fixed key and IV the app
   embeds. It encodes a timestamp, not the request body, so it must be regenerated per call and the

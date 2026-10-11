@@ -37,6 +37,13 @@ DEFAULT_SETTINGS_INTERVAL = 0
 DEFAULT_ALBUM_LIMIT = 5
 MAX_ALBUM_LIMIT = 100
 
+# The Proof cloud's access token lasts about a week. Within this many hours of
+# its expiry, try to renew it while it still works, and if the cloud refuses,
+# ask for a fresh SMS login before anything stops working.
+SESSION_RENEW_HOURS = 24
+# How often to retry the renewal inside that window, in hours.
+SESSION_RENEW_RETRY_HOURS = 1
+
 # Always-on platforms; image/camera are added only when their option is enabled.
 PLATFORMS = [
     "binary_sensor",
@@ -83,3 +90,45 @@ MAX_MESSAGE_IMAGES = 12
 # How far either side of an alert to look for its pictures. The dashcam
 # uploads them a little after the event, and the two clocks are not exact.
 MESSAGE_PHOTO_WINDOW = 120
+
+# --- RTSP output for NVRs ----------------------------------------------------
+CONF_RTSP_MODE = "rtsp_mode"
+CONF_RTSP_PORT = "rtsp_port"
+CONF_RTSP_CAMERA = "rtsp_camera"
+CONF_RTSP_ALTERNATE = "rtsp_alternate_seconds"
+CONF_RTSP_USERNAME = "rtsp_username"
+CONF_RTSP_PASSWORD = "rtsp_password"
+CONF_RTSP_ALERTS = "rtsp_alerts"
+CONF_RTSP_ALERT_MINUTES = "rtsp_alert_minutes"
+CONF_RTSP_DRIVING = "rtsp_driving"
+CONF_RTSP_DRIVING_GRACE = "rtsp_driving_grace"
+
+# off: no RTSP server. trigger: live video only while something triggered it,
+# a standby picture otherwise. always: live video whenever a client is pulling.
+RTSP_MODE_OFF = "off"
+RTSP_MODE_TRIGGER = "trigger"
+RTSP_MODE_ALWAYS = "always"
+RTSP_MODES = [RTSP_MODE_OFF, RTSP_MODE_TRIGGER, RTSP_MODE_ALWAYS]
+DEFAULT_RTSP_MODE = RTSP_MODE_OFF
+
+# Clear of go2rtc's usual 8554 (Frigate's add-on uses it), Home Assistant's
+# own 8555/18554 and the CuboAI integration's 8556-8558.
+DEFAULT_RTSP_PORT = 8564
+
+# The dashcam streams one camera at a time (it ignores an offer for a second
+# video track, or for "#1", and allows one session), so "both" gives each
+# camera its own stream and takes turns between them while live.
+RTSP_CAMERAS = ["front", "rear", "both"]
+DEFAULT_RTSP_CAMERA = "both"
+DEFAULT_RTSP_ALTERNATE = 15
+
+# Alert types that can start live video, by the "type" the cloud gives each
+# alert. Ignition ("acc") is the separate while-driving trigger.
+RTSP_ALERT_TYPES = ["shake", "coll", "sos", "fence", "overspeed", "neutral"]
+DEFAULT_RTSP_ALERTS = ["shake", "coll", "sos"]
+DEFAULT_RTSP_ALERT_MINUTES = 5
+DEFAULT_RTSP_DRIVING = True
+DEFAULT_RTSP_DRIVING_GRACE = 2
+
+# Options that are applied on the fly rather than by reloading the entry.
+RUNTIME_OPTIONS = {CONF_RTSP_MODE}

@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
@@ -45,6 +46,10 @@ MSG_SIGNAL = 6
 HEARTBEAT_INTERVAL = 5
 CONNECT_TIMEOUT = 30
 DATA_CHANNEL_TIMEOUT = 15
+
+# Receives each complete H.264 access unit as it arrives: (Annex-B bytes,
+# 90 kHz timestamp counted from the start of the session).
+EncodedSink = Callable[[bytes, int], None]
 
 
 def _to_legacy_sctp(sdp: str) -> str:
@@ -97,6 +102,11 @@ class ProofWebRTCClient:
         # Unsolicited reports the device pushes, keyed by their "type".
         self.reports: dict[str, Any] = {}
         self._report_waiters: dict[str, asyncio.Event] = {}
+        # Consumers of the video exactly as the dashcam encoded it (the RTSP
+        # stream), and whether tapping it worked on this aiortc.
+        self._encoded_sinks: set[EncodedSink] = set()
+        self.encoded_tap: bool | None = None
+        self._video_receiver: Any = None
 
     @property
     def latest_frame(self) -> VideoFrame | None:
@@ -121,6 +131,90 @@ class ProofWebRTCClient:
     def has_media(self) -> bool:
         """Whether the device has produced any media track yet."""
         return self._video_track is not None
+
+    @property
+    def alive(self) -> bool:
+        """Whether the session is still up as far as WebRTC can tell."""
+        return (
+            not self._closed
+            and self._pc is not None
+            and self._pc.connectionState not in ("failed", "closed")
+        )
+
+    def add_encoded_sink(self, sink: EncodedSink) -> None:
+        """Receive every H.264 access unit as the dashcam sent it."""
+        self._encoded_sinks.add(sink)
+
+    def remove_encoded_sink(self, sink: EncodedSink) -> None:
+        """Stop receiving access units."""
+        self._encoded_sinks.discard(sink)
+
+    def _tap_encoded(self, track: Any) -> None:
+        """Copy each encoded video frame out before aiortc decodes it.
+
+        aiortc only hands out decoded pictures; re-encoding those for RTSP
+        would cost a CPU core and lose quality. Its receiver passes every
+        reassembled frame to the decoder thread through a queue, so a copy is
+        taken there — on the event loop, where that put happens — and the
+        decoding the live view and snapshots rely on carries on untouched.
+        This reaches into aiortc internals (pinned in the manifest), so if the
+        queue is not where it is expected, the tap reports itself off.
+        """
+        assert self._pc is not None
+        receiver = next(
+            (
+                transceiver.receiver
+                for transceiver in self._pc.getTransceivers()
+                if transceiver.receiver.track is track
+            ),
+            None,
+        )
+        queue = getattr(receiver, "_RTCRtpReceiver__decoder_queue", None)
+        if queue is None or not callable(getattr(queue, "put", None)):
+            _LOGGER.warning(
+                "Cannot tap the encoded video for %s on this aiortc version; "
+                "RTSP will show the standby picture only",
+                self._device_id,
+            )
+            self.encoded_tap = False
+            return
+        put = queue.put
+        sinks = self._encoded_sinks
+
+        def _put(item: Any, *args: Any, **kwargs: Any) -> None:
+            if item is not None and sinks:
+                codec, frame = item
+                if getattr(codec, "mimeType", "").lower() == "video/h264":
+                    for sink in list(sinks):
+                        try:
+                            sink(frame.data, frame.timestamp)
+                        except Exception:  # noqa: BLE001
+                            _LOGGER.exception("Encoded video consumer failed")
+            put(item, *args, **kwargs)
+
+        queue.put = _put
+        self.encoded_tap = True
+        self._video_receiver = receiver
+
+    async def async_request_keyframe(self) -> bool:
+        """Ask the dashcam for a keyframe (an RTCP picture-loss indication).
+
+        The dashcam sends one keyframe when the session starts and never
+        another unless asked — measured: none in 15 s, then one ~150 ms after
+        each request. A consumer that joins later, or an NVR that needs a
+        keyframe every few seconds, has to ask.
+        """
+        receiver = self._video_receiver
+        send = getattr(receiver, "_send_rtcp_pli", None)
+        ssrcs = list(getattr(receiver, "_RTCRtpReceiver__active_ssrc", None) or ())
+        if send is None or not ssrcs:
+            return False
+        for ssrc in ssrcs:
+            try:
+                await send(ssrc)
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Keyframe request to %s failed", self._device_id)
+        return True
 
     def subscribe(self) -> tuple[Any, Any]:
         """Return relayed (video, audio) tracks for one consumer."""
@@ -147,6 +241,7 @@ class ProofWebRTCClient:
         def _on_track(track: Any) -> None:
             if track.kind == "video":
                 self._video_track = track
+                self._tap_encoded(track)
                 # Consume through the relay so browser consumers can subscribe
                 # to the same track independently.
                 self._tasks.append(

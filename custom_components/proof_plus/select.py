@@ -6,10 +6,11 @@ from typing import Any
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, RTSP_MODES
 from .coordinator import ProofCoordinator
 from .entity import ProofEntity
 
@@ -78,11 +79,38 @@ async def async_setup_entry(
 ) -> None:
     """Set up the list settings for each dashcam."""
     coordinator: ProofCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
+    entities: list[SelectEntity] = [
         ProofSettingSelect(hass, coordinator, device_id, description)
         for device_id in coordinator.data
         for description in SELECTS
-    )
+    ]
+    # The RTSP mode belongs to the account's RTSP server, so it is created once
+    # and attached to the first dashcam.
+    if first_device := next(iter(coordinator.data), None):
+        entities.append(ProofRtspModeSelect(coordinator, first_device))
+    async_add_entities(entities)
+
+
+class ProofRtspModeSelect(ProofEntity, SelectEntity):
+    """Off, live only when triggered, or always live — the same as Configure."""
+
+    _attr_translation_key = "rtsp_mode"
+    _attr_icon = "mdi:cctv"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_options = RTSP_MODES
+
+    def __init__(self, coordinator: ProofCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_rtsp_mode"
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the current mode."""
+        return self.coordinator.rtsp.mode if self.coordinator.rtsp else None
+
+    async def async_select_option(self, option: str) -> None:
+        """Switch mode; applied at once, without reloading the integration."""
+        await self.coordinator.rtsp.async_set_mode(option)
 
 
 class ProofSettingSelect(ProofEntity, SelectEntity):

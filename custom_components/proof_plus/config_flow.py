@@ -19,6 +19,14 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .api import (
     ProofApiClient,
@@ -38,6 +46,16 @@ from .const import (
     CONF_MESSAGE_IMAGES,
     CONF_LIVE_KEEPALIVE,
     CONF_REFRESH_TOKEN,
+    CONF_RTSP_ALERT_MINUTES,
+    CONF_RTSP_ALERTS,
+    CONF_RTSP_ALTERNATE,
+    CONF_RTSP_CAMERA,
+    CONF_RTSP_DRIVING,
+    CONF_RTSP_DRIVING_GRACE,
+    CONF_RTSP_MODE,
+    CONF_RTSP_PASSWORD,
+    CONF_RTSP_PORT,
+    CONF_RTSP_USERNAME,
     CONF_TOKEN_EXPIRES,
     CONF_SCAN_INTERVAL,
     CONF_SELFCHECK_INTERVAL,
@@ -52,8 +70,19 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SELFCHECK_INTERVAL,
     DEFAULT_SNAPSHOT_INTERVAL,
+    DEFAULT_RTSP_ALERT_MINUTES,
+    DEFAULT_RTSP_ALERTS,
+    DEFAULT_RTSP_ALTERNATE,
+    DEFAULT_RTSP_CAMERA,
+    DEFAULT_RTSP_DRIVING,
+    DEFAULT_RTSP_DRIVING_GRACE,
+    DEFAULT_RTSP_MODE,
+    DEFAULT_RTSP_PORT,
     MIN_SNAPSHOT_INTERVAL,
     DOMAIN,
+    RTSP_ALERT_TYPES,
+    RTSP_CAMERAS,
+    RTSP_MODES,
     MAX_ALBUM_LIMIT,
     MAX_EVENT_IMAGES,
     MIN_SCAN_INTERVAL,
@@ -71,6 +100,84 @@ STEP_USER_SCHEMA = vol.Schema(
 REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
 
 STEP_CODE_SCHEMA = vol.Schema({vol.Required(CONF_CODE): str})
+
+
+def _rtsp_mode_selector() -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(
+            options=RTSP_MODES,
+            translation_key=CONF_RTSP_MODE,
+            mode=SelectSelectorMode.LIST,
+        )
+    )
+
+
+def _rtsp_schema(options: Mapping[str, Any]) -> vol.Schema:
+    """The RTSP / NVR settings, filled in from the current options."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_RTSP_MODE, default=options.get(CONF_RTSP_MODE, DEFAULT_RTSP_MODE)
+            ): _rtsp_mode_selector(),
+            vol.Required(
+                CONF_RTSP_CAMERA,
+                default=options.get(CONF_RTSP_CAMERA, DEFAULT_RTSP_CAMERA),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=RTSP_CAMERAS, translation_key=CONF_RTSP_CAMERA
+                )
+            ),
+            vol.Required(
+                CONF_RTSP_ALTERNATE,
+                default=options.get(CONF_RTSP_ALTERNATE, DEFAULT_RTSP_ALTERNATE),
+            ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
+            vol.Required(
+                CONF_RTSP_ALERTS,
+                default=list(options.get(CONF_RTSP_ALERTS, DEFAULT_RTSP_ALERTS)),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=RTSP_ALERT_TYPES,
+                    translation_key=CONF_RTSP_ALERTS,
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )
+            ),
+            vol.Required(
+                CONF_RTSP_ALERT_MINUTES,
+                default=options.get(CONF_RTSP_ALERT_MINUTES, DEFAULT_RTSP_ALERT_MINUTES),
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=240)),
+            vol.Required(
+                CONF_RTSP_DRIVING,
+                default=options.get(CONF_RTSP_DRIVING, DEFAULT_RTSP_DRIVING),
+            ): bool,
+            vol.Required(
+                CONF_RTSP_DRIVING_GRACE,
+                default=options.get(
+                    CONF_RTSP_DRIVING_GRACE, DEFAULT_RTSP_DRIVING_GRACE
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
+            vol.Required(
+                CONF_RTSP_PORT, default=options.get(CONF_RTSP_PORT, DEFAULT_RTSP_PORT)
+            ): vol.All(vol.Coerce(int), vol.Range(min=1024, max=65535)),
+            vol.Optional(
+                CONF_RTSP_USERNAME,
+                description={"suggested_value": options.get(CONF_RTSP_USERNAME)},
+            ): str,
+            vol.Optional(
+                CONF_RTSP_PASSWORD,
+                description={"suggested_value": options.get(CONF_RTSP_PASSWORD)},
+            ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+        }
+    )
+
+
+def _rtsp_errors(user_input: Mapping[str, Any]) -> dict[str, str]:
+    """A user name needs a password and the other way round."""
+    if bool(user_input.get(CONF_RTSP_USERNAME)) != bool(
+        user_input.get(CONF_RTSP_PASSWORD)
+    ):
+        return {"base": "rtsp_credentials"}
+    return {}
 
 
 class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -185,7 +292,33 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
 
         await self.async_set_unique_id(self._client.uid or self._data[CONF_USERNAME])
         self._abort_if_unique_id_configured()
-        return self.async_create_entry(title=self._data[CONF_USERNAME], data=data)
+        self._data = data
+        return await self.async_step_rtsp()
+
+    async def async_step_rtsp(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose whether to offer the dashcam to an NVR over RTSP.
+
+        Only the mode is asked here; the triggers, port and login have
+        sensible defaults and live under Configure.
+        """
+        if user_input is None:
+            return self.async_show_form(
+                step_id="rtsp",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(
+                            CONF_RTSP_MODE, default=DEFAULT_RTSP_MODE
+                        ): _rtsp_mode_selector()
+                    }
+                ),
+            )
+        return self.async_create_entry(
+            title=self._data[CONF_USERNAME],
+            data=self._data,
+            options={CONF_RTSP_MODE: user_input[CONF_RTSP_MODE]},
+        )
 
     async def async_step_reauth(
         self, entry_data: Mapping[str, Any]
@@ -230,17 +363,58 @@ class ProofConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ProofOptionsFlow(OptionsFlow):
-    """Options flow: polling interval and the opt-in video features."""
+    """Options flow: the general settings, and RTSP for NVRs."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manage options."""
+        """Pick which group of settings to change."""
+        return self.async_show_menu(step_id="init", menu_options=["general", "rtsp"])
+
+    async def async_step_rtsp(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """RTSP for NVRs: mode, triggers, port and login."""
+        options = self.config_entry.options
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            if not (errors := _rtsp_errors(user_input)):
+                merged = {**options, **user_input}
+                # Optional fields left empty are absent; clear them too.
+                for key in (CONF_RTSP_USERNAME, CONF_RTSP_PASSWORD):
+                    if not user_input.get(key):
+                        merged.pop(key, None)
+                return self.async_create_entry(data=merged)
+            options = {**options, **user_input}
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        rtsp = getattr(coordinator, "rtsp", None)
+        urls = (
+            "\n".join(
+                f"`{rtsp.stream_url(device_id, camera)}`"
+                for device_id in coordinator.data
+                for camera in rtsp.cameras(device_id)
+            )
+            if rtsp is not None
+            else "-"
+        )
+        return self.async_show_form(
+            step_id="rtsp",
+            data_schema=_rtsp_schema(options),
+            errors=errors,
+            description_placeholders={"urls": urls},
+        )
+
+    async def async_step_general(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Polling, the opt-in video features and the schedules."""
+        if user_input is not None:
+            return self.async_create_entry(
+                data={**self.config_entry.options, **user_input}
+            )
         options = self.config_entry.options
         return self.async_show_form(
-            step_id="init",
+            step_id="general",
             data_schema=vol.Schema(
                 {
                     vol.Required(
