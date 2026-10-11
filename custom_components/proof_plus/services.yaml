@@ -1,0 +1,22 @@
+rtsp_trigger:
+  fields:
+    device_id:
+      selector:
+        device:
+          integration: proof_plus
+          multiple: true
+    minutes:
+      selector:
+        number:
+          min: 0.5
+          max: 1440
+          step: 0.5
+          unit_of_measurement: min
+          mode: box
+rtsp_stop:
+  fields:
+    device_id:
+      selector:
+        device:
+          integration: proof_plus
+          multiple: true

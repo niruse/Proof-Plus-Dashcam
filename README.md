@@ -41,6 +41,7 @@ unless you turn it on:
   by time and camera. Nothing is downloaded; a recording is fetched from the cloud only when you
   open it, and each folder lists the newest few (5 by default, configurable).
 - **Live view** — see the note under [Live view](#live-view) below.
+- **RTSP for an NVR** — see [RTSP for NVRs](#rtsp-for-nvrs) below.
 
 ## Installation
 
@@ -111,6 +112,61 @@ If you would rather they keep themselves current, the **Auto refresh snapshots**
 on a timer, every 15 minutes by default (change it under **Configure**). It is off to begin with and
 remembers what you chose across restarts, so it never quietly starts spending mobile data on its
 own. The switch's `interval_minutes` attribute shows the rate in use.
+
+## RTSP for NVRs
+
+The dashcam can be recorded by an NVR (HiLook/Hikvision, Frigate, Blue Iris, Synology Surveillance
+Station…) as an ordinary RTSP camera. Choose the mode when you add the integration, or later under
+**Configure → RTSP / NVR** or with the **RTSP stream** control on the dashcam's device page:
+
+| Mode | What the NVR gets |
+|---|---|
+| **Off** (default) | No RTSP server. |
+| **Only when triggered** | Live video while a trigger is active, and a still **standby picture** the rest of the time. |
+| **Always** | Live video whenever the NVR is connected. |
+
+Give the NVR `rtsp://<home-assistant-ip>:8564/proof_<device id>` — the exact address is shown on the
+**RTSP / NVR** options page and in the `url` attribute of `binary_sensor.<device>_rtsp_live_video`.
+Add a user name and password under the same page if the NVR should log in. Video only, H.264,
+960×540 at about 20 fps — passed through exactly as the dashcam encodes it, nothing is re-encoded.
+
+**Triggers** (only in *only when triggered*):
+
+- **Alerts** — the alert types you pick (vibration/anti-theft, collision and SOS by default) start
+  live video for 5 minutes; another alert in that time extends it. Alerts the cloud replays at login
+  are ignored.
+- **While driving** — from ignition on until ignition off, plus 2 minutes.
+- **The `RTSP live` switch** — holds live video on until you switch it off.
+- **The `proof_plus.rtsp_trigger` action** — live video for a number of minutes, from any
+  automation; `proof_plus.rtsp_stop` ends every trigger at once.
+
+`binary_sensor.<device>_rtsp_live_video` is on while live video is going out, and its attributes
+show which triggers are active, until when, and whether an NVR is connected.
+
+**The standby picture** is the last view from that camera, dimmed and labelled. It keeps the NVR
+connected between triggers — no video-loss alarms, nothing to reconnect — and it never changes while
+shown, so the jump to live video is what the NVR's motion detection records as the event. It costs
+about 2 KB/s.
+
+**Mobile data.** Live video runs over the dashcam's own mobile connection at roughly 750 kbit/s —
+about 340 MB an hour. *Always* means that for as long as the NVR is connected, and it keeps the dashcam
+awake while parked. go2rtc only pulls the stream while an RTSP client is connected, so with no NVR
+connected nothing reaches the dashcam in either mode.
+
+Good to know:
+
+- The dashcam streams **one camera at a time** over **one session**, shared with the live view
+  cameras and the settings controls. The stream carries the camera chosen under *Camera on the
+  stream* (front by default). While you watch the other camera in Home Assistant the stream shows the
+  standby picture, and it takes the camera back when you stop. The Proof phone app cannot open live
+  view while the stream is live.
+- Live video starts about 10 seconds after a trigger — the time it takes to reach the dashcam over
+  its mobile network — so the very start of an incident is in the dashcam's own event clip rather
+  than in the NVR.
+- The dashcam sends a keyframe only when asked, so the integration asks for one every two seconds
+  while live; NVRs need them to start recordings and to recover from a lost packet.
+- The RTSP server is a second instance of the go2rtc that ships with Home Assistant, on its own port
+  (8564 by default); Home Assistant's own instance only listens on localhost.
 
 ## Example dashboard
 
