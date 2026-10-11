@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.storage import Store
+from homeassistant.helpers.storage import STORAGE_DIR, Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -23,9 +26,57 @@ from .const import (
     DOMAIN,
     GSM_BANDS,
     GSM_WEAK_DBM,
+    SESSION_RENEW_HOURS,
+    SESSION_RENEW_RETRY_HOURS,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+STORE_SUFFIX = ".device_props"
+
+# How long a settings or storage read keeps the dashcam session after it is
+# done, so the reads a button makes back to back share one session (the
+# dashcam wants a pause between sessions) without holding it open for good.
+CONTROL_LINGER = 20
+
+
+def _store_key(entry_id: str) -> str:
+    return f"{DOMAIN}.{entry_id}{STORE_SUFFIX}"
+
+
+def _login_notice_id(entry: ConfigEntry) -> str:
+    return f"{DOMAIN}_{entry.entry_id}_login"
+
+
+@callback
+def async_notify_login_needed(
+    hass: HomeAssistant, entry: ConfigEntry, expires_at: float | None
+) -> None:
+    """Tell the user, where they will see it, that a new SMS code is needed.
+
+    Home Assistant only flags a re-authentication on the integrations page,
+    which is easy to miss for weeks while every Proof entity sits unavailable.
+    """
+    if expires_at and expires_at > time.time():
+        when = dt_util.as_local(dt_util.utc_from_timestamp(expires_at))
+        status = f"runs out on {when:%a %d %b at %H:%M}"
+    else:
+        status = "has run out, so the dashcam is no longer being updated"
+    persistent_notification.async_create(
+        hass,
+        f"The Proof Plus sign-in {status}. The Proof cloud will not renew it on "
+        "its own, so it needs a new SMS code: open "
+        f"[Proof Plus](/config/integrations/integration/{DOMAIN}) and choose "
+        "**Re-authenticate**.",
+        title="Proof Plus needs a new SMS code",
+        notification_id=_login_notice_id(entry),
+    )
+
+
+@callback
+def async_clear_login_notice(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Withdraw the sign-in notice once a working session is back."""
+    persistent_notification.async_dismiss(hass, _login_notice_id(entry))
 
 
 def _gsm_quality(signal: int | None) -> str | None:
@@ -60,14 +111,21 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.latest_events: dict[str, list[dict[str, Any]]] = {}
         # One shared live session per dashcam (see camera.DeviceLiveSession).
         self._live_sessions: dict[str, Any] = {}
+        self._control_timers: dict[str, Any] = {}
+        # The RTSP output, when it is set up (see rtsp.ProofRtsp).
+        self.rtsp: Any = None
         # Last known device settings per dashcam, read on demand over the
         # control channel (reading them requires connecting to the device).
         # They are kept on disk so the controls still work after a restart
         # instead of going unavailable until the user refreshes them.
         self.device_props: dict[str, dict[str, Any]] = {}
-        self._store: Store = Store(
-            hass, 1, f"{DOMAIN}.{entry.entry_id}.device_props"
-        )
+        self._store: Store = Store(hass, 1, _store_key(entry.entry_id))
+        # Whether this entry had saved anything yet; a re-added integration
+        # has not, and picks up what the removed entry left behind instead.
+        self._had_store = False
+        # Early session renewal: when it was last tried, and what came of it.
+        self.session_renew_attempt: datetime | None = None
+        self.session_renew_result: str | None = None
         # Account-wide alert toggles (msgctrl); cheap to read, so polled.
         self.alerts: dict[str, bool] = {}
         # Last self-check result per dashcam.
@@ -98,6 +156,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     async def async_load_stored_props(self) -> None:
         """Restore the settings and self-check results from a previous run."""
         if isinstance(stored := await self._store.async_load(), dict):
+            self._had_store = True
             # Older versions stored only the settings, keyed by device id.
             if "props" in stored or "self_check" in stored:
                 self.device_props = stored.get("props") or {}
@@ -106,6 +165,88 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 self.messages = stored.get("messages") or {}
             else:
                 self.device_props = stored
+
+    async def async_adopt_previous_state(self) -> str | None:
+        """Carry the history over from a removed entry for the same dashcams.
+
+        Removing and re-adding the integration makes a new config entry with
+        an empty store, so the alert history, the last settings read and the
+        self-check result all vanish — and the settings controls stay
+        unavailable until the dashcam is read again. The removed entry's store
+        is still on disk; take the newest one that covers these dashcams.
+        Returns the entry id it came from, if any.
+        """
+        if self._had_store or not self.data:
+            return None
+        folder = Path(self.hass.config.path(STORAGE_DIR))
+        live = {e.entry_id for e in self.hass.config_entries.async_entries(DOMAIN)}
+        prefix = f"{DOMAIN}."
+
+        def _orphans() -> list[tuple[float, str]]:
+            found = []
+            for path in folder.glob(f"{DOMAIN}.*{STORE_SUFFIX}"):
+                entry_id = path.name[len(prefix) : -len(STORE_SUFFIX)]
+                if entry_id not in live:
+                    found.append((path.stat().st_mtime, entry_id))
+            return sorted(found, reverse=True)
+
+        devices = set(self.data)
+        for _mtime, entry_id in await self.hass.async_add_executor_job(_orphans):
+            stored = await Store(self.hass, 1, _store_key(entry_id)).async_load()
+            if not isinstance(stored, dict) or not (
+                "props" in stored or "messages" in stored
+            ):
+                continue
+
+            def ours(section: str) -> dict[str, Any]:
+                return {
+                    device_id: value
+                    for device_id, value in (stored.get(section) or {}).items()
+                    if device_id in devices
+                }
+
+            if not any(
+                ours(section)
+                for section in ("props", "self_check", "storage", "messages")
+            ):
+                continue
+            self.device_props = ours("props")
+            self.self_check = ours("self_check")
+            self.storage = ours("storage")
+            self.messages = ours("messages")
+            self._had_store = True
+            self._save_props()
+            return entry_id
+        return None
+
+    async def _async_renew_session_early(self) -> None:
+        """Renew the cloud session in its last day, while it still works.
+
+        Waiting for the token to run out means everything stops until someone
+        notices; renewing ahead of time either keeps it going, or — if the
+        cloud refuses — asks for a new SMS code while there is still time.
+        """
+        expires_at = self.client.token_expires_at
+        if not expires_at or expires_at - time.time() > SESSION_RENEW_HOURS * 3600:
+            return
+        now = dt_util.utcnow()
+        if self.session_renew_attempt and now - self.session_renew_attempt < timedelta(
+            hours=SESSION_RENEW_RETRY_HOURS
+        ):
+            return
+        self.session_renew_attempt = now
+        try:
+            await self.client.async_renew()
+        except ProofAuthError as err:
+            self.session_renew_result = f"refused: {err}"
+            async_notify_login_needed(self.hass, self.config_entry, expires_at)
+            self.config_entry.async_start_reauth(self.hass)
+        except ProofError as err:
+            # Unreachable for now; try again on the next round.
+            self.session_renew_result = f"failed: {err}"
+        else:
+            self.session_renew_result = "renewed"
+            async_clear_login_notice(self.hass, self.config_entry)
 
     def async_run_self_check(self, device_id: str) -> dict[str, Any]:
         """Check the things the app's self-check screen reports on.
@@ -183,10 +324,13 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self, hass: HomeAssistant, device_id: str
     ) -> dict[str, Any] | None:
         """Read the dashcam's own settings (needs a session to the device)."""
-        client = await self.live_session(hass, device_id).async_acquire(0)
-        if client is None:
-            return None
-        props = await client.async_get_props()
+        client = await self._async_control_client(hass, device_id)
+        try:
+            if client is None:
+                return None
+            props = await client.async_get_props()
+        finally:
+            self._schedule_control_release(hass, device_id)
         if props is not None:
             self.device_props[device_id] = props
             self._save_props()
@@ -197,20 +341,23 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self, hass: HomeAssistant, device_id: str, props: dict[str, Any]
     ) -> bool:
         """Change dashcam settings, then refresh the cached values."""
-        client = await self.live_session(hass, device_id).async_acquire(0)
-        if client is None:
-            return False
-        if not await client.async_set_props(props):
-            return False
-        # Reflect the change immediately, then confirm from the device.
-        self.device_props.setdefault(device_id, {}).update(props)
-        self._save_props()
-        self.async_update_listeners()
-        if (fresh := await client.async_get_props()) is not None:
-            self.device_props[device_id] = fresh
+        client = await self._async_control_client(hass, device_id)
+        try:
+            if client is None:
+                return False
+            if not await client.async_set_props(props):
+                return False
+            # Reflect the change immediately, then confirm from the device.
+            self.device_props.setdefault(device_id, {}).update(props)
             self._save_props()
             self.async_update_listeners()
-        return True
+            if (fresh := await client.async_get_props()) is not None:
+                self.device_props[device_id] = fresh
+                self._save_props()
+                self.async_update_listeners()
+            return True
+        finally:
+            self._schedule_control_release(hass, device_id)
 
     async def async_get_storage(
         self, hass: HomeAssistant, device_id: str
@@ -219,10 +366,13 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
 
         This needs a live session to the camera, so it is only done on request.
         """
-        client = await self.live_session(hass, device_id).async_acquire(0)
-        if client is None:
-            return None
-        storage = await client.async_get_storage()
+        client = await self._async_control_client(hass, device_id)
+        try:
+            if client is None:
+                return None
+            storage = await client.async_get_storage()
+        finally:
+            self._schedule_control_release(hass, device_id)
         if storage:
             self.storage[device_id] = storage
             self._save_props()
@@ -238,6 +388,32 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.async_update_listeners()
         return True
 
+    async def _async_control_client(self, hass: HomeAssistant, device_id: str) -> Any:
+        """The dashcam session, for a settings or storage exchange.
+
+        Registered as a watcher of its own, so the session is not left open
+        afterwards with nobody holding it — and taken on whichever camera is
+        showing, so a settings read does not pull a viewer (or the RTSP
+        stream) off the rear camera.
+        """
+        session = self.live_session(hass, device_id)
+        session.add_watcher(f"{device_id}:control")
+        self._schedule_control_release(hass, device_id)
+        return await session.async_acquire(None)
+
+    @callback
+    def _schedule_control_release(self, hass: HomeAssistant, device_id: str) -> None:
+        """Let go of the control claim once the reads have gone quiet."""
+        if (handle := self._control_timers.pop(device_id, None)) is not None:
+            handle.cancel()
+        session = self.live_session(hass, device_id)
+        self._control_timers[device_id] = hass.loop.call_later(
+            CONTROL_LINGER,
+            lambda: hass.async_create_task(
+                session.async_release(f"{device_id}:control")
+            ),
+        )
+
     def live_session(self, hass: HomeAssistant, device_id: str) -> Any:
         """Return the shared live session for a dashcam, creating it on first use."""
         if device_id not in self._live_sessions:
@@ -251,6 +427,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             devices = await self.client.async_get_devices()
         except ProofAuthError as err:
             # Recoverable only by a new SMS login, so ask the user for one.
+            async_notify_login_needed(self.hass, self.config_entry, None)
             raise ConfigEntryAuthFailed(str(err)) from err
         except ProofError as err:
             # Connection issues, a stale signature (clock skew) or a transient
@@ -260,6 +437,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             raise UpdateFailed("Proof returned no devices for this account")
 
         result = {dev["id"]: dev for dev in devices if "id" in dev}
+        await self._async_renew_session_early()
         await self._async_refresh_alerts()
         if self._fetch_events:
             await self._async_refresh_events(result)

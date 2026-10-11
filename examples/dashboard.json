@@ -541,6 +541,47 @@
         },
         {
           "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "RTSP / NVR",
+              "icon": "mdi:cctv",
+              "heading_style": "title"
+            },
+            {
+              "type": "tile",
+              "entity": "select.YOUR_DEVICE_rtsp_stream",
+              "name": "RTSP stream",
+              "features": [
+                {
+                  "type": "select-options"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "switch.YOUR_DEVICE_rtsp_live",
+              "name": "Live now",
+              "features": [
+                {
+                  "type": "toggle"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "binary_sensor.YOUR_DEVICE_rtsp_live_video",
+              "name": "Live video",
+              "color": "red"
+            },
+            {
+              "type": "markdown",
+              "content": "{% set a = states['binary_sensor.YOUR_DEVICE_rtsp_live_video'].attributes if states['binary_sensor.YOUR_DEVICE_rtsp_live_video'] else {} %}{% if a.url %}**NVR address**  \nfront `{{ a.url }}`  \n{% if a.rear_url %}rear `{{ a.rear_url }}`  \n{% endif %}NVR connected: **{{ 'yes' if a.nvr_connected else 'no' }}**{% if a.live_camera %} · live: {{ a.live_camera }}{% endif %}{% if a.triggers %} · live because: {{ a.triggers | join(', ') }}{% endif %}{% if a.live_until %} · until {{ as_timestamp(a.live_until) | timestamp_custom('%H:%M') }}{% endif %}{% if a.error %}  \n⚠️ {{ a.error }}{% endif %}{% else %}RTSP is off — pick a mode above.{% endif %}"
+            }
+          ]
+        },
+        {
+          "type": "grid",
           "column_span": 2,
           "cards": [
             {
