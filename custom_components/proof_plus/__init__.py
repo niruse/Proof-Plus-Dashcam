@@ -8,8 +8,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
+from homeassistant.util import dt as dt_util
 
 from .api import ProofApiClient, ProofAuthError, ProofConnectionError
 from .const import (
@@ -25,7 +27,11 @@ from .const import (
     DOMAIN,
     PLATFORMS,
 )
-from .coordinator import ProofCoordinator
+from .coordinator import (
+    ProofCoordinator,
+    async_clear_login_notice,
+    async_notify_login_needed,
+)
 from .messages import ProofMessageListener
 
 
@@ -37,6 +43,28 @@ def _platforms_for(entry: ConfigEntry) -> list[str]:
     if entry.options.get(CONF_ENABLE_LIVE):
         platforms.append(Platform.CAMERA)
     return platforms
+
+
+@callback
+def _async_migrate_alert_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Give the alert switches back the account id in their unique id.
+
+    Since setup started resuming the stored access token instead of logging in,
+    the client no longer learnt the account id, and the alert switches were
+    registered as ``alert_<key>_None`` — new entities with a ``_2`` suffix,
+    leaving the originals behind.
+    """
+    if not entry.unique_id:
+        return
+    registry = er.async_get(hass)
+    for reg in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if reg.domain != "switch" or not (
+            reg.unique_id.startswith("alert_") and reg.unique_id.endswith("_None")
+        ):
+            continue
+        unique_id = f"{reg.unique_id.removesuffix('_None')}_{entry.unique_id}"
+        if registry.async_get_entity_id("switch", DOMAIN, unique_id) is None:
+            registry.async_update_entity(reg.entity_id, new_unique_id=unique_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -63,12 +91,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         on_tokens=_store_tokens,
         access_token=entry.data.get(CONF_ACCESS_TOKEN),
         token_expires_at=entry.data.get(CONF_TOKEN_EXPIRES) or 0.0,
+        # The entry is keyed by the account id the login returned, which a
+        # resumed session would otherwise never learn.
+        uid=entry.unique_id
+        if entry.unique_id != entry.data[CONF_USERNAME]
+        else None,
     )
 
     try:
         await client.async_establish()
     except ProofAuthError as err:
         # Only a fresh SMS login can recover this.
+        async_notify_login_needed(hass, entry, None)
         raise ConfigEntryAuthFailed(str(err)) from err
     except ProofConnectionError as err:
         raise ConfigEntryNotReady(str(err)) from err
@@ -78,6 +112,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # straight away instead of waiting for the user to refresh them.
     await coordinator.async_load_stored_props()
     await coordinator.async_config_entry_first_refresh()
+    # A re-added integration starts from nothing; pick up what the removed
+    # entry knew about the same dashcams.
+    await coordinator.async_adopt_previous_state()
+    _async_migrate_alert_ids(hass, entry)
+    async_clear_login_notice(hass, entry)
 
     # Remember exactly which platforms were set up, so that a later options
     # change (which alters _platforms_for) unloads the right ones.
@@ -134,13 +173,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for device_id in coordinator.data:
                 coordinator.async_run_self_check(device_id)
 
-        # Only on the interval — the last result is restored from disk, so
-        # there is no need to re-run it every time Home Assistant restarts.
         entry.async_on_unload(
             async_track_time_interval(
                 hass, _run_self_check, timedelta(hours=check_hours)
             )
         )
+        # The interval restarts with Home Assistant, so a box restarted more
+        # often than that would never get there. Run now if the result
+        # restored from disk is already older than the interval.
+        for device_id in coordinator.data:
+            run = (coordinator.self_check.get(device_id) or {}).get("run")
+            last = dt_util.parse_datetime(run) if run else None
+            if last is None or dt_util.utcnow() - last >= timedelta(hours=check_hours):
+                coordinator.async_run_self_check(device_id)
     return True
 
 

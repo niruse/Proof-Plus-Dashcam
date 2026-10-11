@@ -63,8 +63,15 @@ restart Home Assistant.
 3. Enter the verification code that is sent to that number by SMS
 4. All dashcams on the account are added automatically
 
-You only enter a code once — the session is then kept alive with the refresh token. If the
-session is ever rejected, Home Assistant asks you to re-authenticate with a new code.
+The Proof cloud's sign-in lasts about a week. In its last day the integration tries to renew it;
+if the cloud refuses — it has done so for some accounts — you get a notification and a
+**Re-authenticate** prompt on the integration while everything still works. Press it and enter the
+new SMS code (the password is remembered). The **Sign-in expires** diagnostic sensor shows when the
+next one is due, and its `renewal_result` attribute shows whether the last renewal was accepted.
+
+Re-authenticate rather than removing and re-adding the integration: a re-added entry starts with
+the options at their defaults (live view, snapshots and the media browser off). It does pick up the
+alert history, the last-read settings and the self-check result the removed entry left behind.
 
 The polling interval (default 30 s — the same rate the device reports at) can be changed under
 the integration's **Configure** options.
@@ -229,8 +236,10 @@ Established by analysing the mobile app's traffic and its (Hermes) JavaScript bu
 
 - **Login:** `POST /api/app/v5/user/sendcode` `{"pn":"<phone>","type":"login","locale":"en_us"}`,
   then `POST /oauth/token` with `grant_type=app`, `client_id=app`, `client_secret=api1234`,
-  `scope=SCOPE_READ`, `username`, `password` and `vcode`. `grant_type=refresh_token` renews it
-  (the `scope` parameter is required, otherwise it fails with `invalid_scope`).
+  `scope=SCOPE_READ`, `username`, `password` and `vcode`. The access token lasts about a week
+  (`expires_in` ≈ 604800). `grant_type=refresh_token` is meant to renew it (the `scope` parameter
+  is required, otherwise it fails with `invalid_scope`), but the cloud has been seen to answer
+  `invalid_grant` even right after a login — hence the early renewal and the prompt above.
 - **Request signing:** every `/api/app/v5/…` request carries an `x-sign` header equal to
   `base64( AES-128-CBC-PKCS7( "Proof|<epoch_ms>|<version>" ) )` with a fixed key and IV the app
   embeds. It encodes a timestamp, not the request body, so it must be regenerated per call and the
