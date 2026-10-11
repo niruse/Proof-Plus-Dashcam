@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .coordinator import ProofCoordinator
+from .coordinator import ProofCoordinator, gps_fix_fresh
 from .entity import ProofEntity
 
 
@@ -61,6 +61,10 @@ class ProofDeviceTracker(ProofEntity, TrackerEntity):
             "heading": gps.get("heading"),
             "speed": gps.get("speed"),
             "gps_valid": gps.get("valid"),
+            # False when the dashcam is repeating an old position because it
+            # cannot see satellites; the position is then where it last could.
+            "gps_fix_fresh": gps_fix_fresh(self.device or {}),
+            "satellites": gps.get("satu"),
         }
         if gps.get("time"):
             attrs["gps_time"] = dt_util.utc_from_timestamp(gps["time"]).isoformat()
