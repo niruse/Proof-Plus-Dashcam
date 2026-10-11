@@ -97,6 +97,11 @@ FIRST_KEYFRAME_SECONDS = 30
 # (to start recording segments, and to heal after a lost packet).
 KEYFRAME_RETRY_SECONDS = 1
 KEYFRAME_INTERVAL_SECONDS = 2
+# Live timestamps follow the dashcam's frame-to-frame steps but never stray
+# from the wall clock by more than this (90 kHz ticks).
+MAX_FRAME_STEP = 90000
+MAX_LEAD = 90000
+MAX_LAG = 3 * 90000
 # Waits between attempts to reach a dashcam that would not answer.
 RETRY_BACKOFF = (15, 30, 60, 120, 300)
 # How often to retry putting the dashcam on the feed's camera.
@@ -339,6 +344,30 @@ class ProofRtspFeed:
         def clock() -> int:
             return int((loop.time() - start) * 90000)
 
+        # The dashcam's own timestamps are only trusted frame to frame. aiortc
+        # reads any timestamp that goes backwards (a reordered or retransmitted
+        # packet on a moving mobile link) as a 32-bit wrap and moves every
+        # later frame ~13 hours ahead; with timestamps forced to increase, one
+        # such frame froze the NVR's timeline for the rest of the session.
+        prev_ts: int | None = None
+        prev_pts = 0
+        prev_arrival = 0
+
+        def live_pts(timestamp: int) -> int:
+            nonlocal prev_ts, prev_pts, prev_arrival
+            arrival = clock()
+            if prev_ts is None:
+                pts = arrival
+            else:
+                step = timestamp - prev_ts
+                if not 0 < step <= MAX_FRAME_STEP:
+                    step = min(max(arrival - prev_arrival, 1), MAX_FRAME_STEP)
+                pts = prev_pts + step
+                if not arrival - MAX_LAG <= pts <= arrival + MAX_LEAD:
+                    pts = arrival
+            prev_ts, prev_pts, prev_arrival = timestamp, pts, arrival
+            return pts
+
         units: list[bytes] = []
         claimed = False
         acquiring: asyncio.Future | None = None
@@ -347,7 +376,6 @@ class ProofRtspFeed:
         retry_at = 0.0
         failures = 0
         waiting_key = True
-        offset = 0
         last_frame_at = 0.0
         last_reclaim = 0.0
         last_keyframe_at = 0.0
@@ -494,7 +522,7 @@ class ProofRtspFeed:
                         if not keyframe:
                             continue
                         waiting_key = False
-                        offset = clock() - timestamp
+                        prev_ts = None
                         if (profile := sps_profile(data)) is not None:
                             self._profile = profile
                         if not self.live:
@@ -503,7 +531,7 @@ class ProofRtspFeed:
                             self.last_error = None
                             failures = 0
                             self._rtsp.async_notify()
-                    emit(data, keyframe, timestamp + offset)
+                    emit(data, keyframe, live_pts(timestamp))
                     self._last_view = client.latest_frame or self._last_view
                     last_frame_at = now
                     continue
