@@ -48,6 +48,7 @@ from .const import (
     CONF_REFRESH_TOKEN,
     CONF_RTSP_ALERT_MINUTES,
     CONF_RTSP_ALERTS,
+    CONF_RTSP_ALTERNATE,
     CONF_RTSP_CAMERA,
     CONF_RTSP_DRIVING,
     CONF_RTSP_DRIVING_GRACE,
@@ -71,6 +72,7 @@ from .const import (
     DEFAULT_SNAPSHOT_INTERVAL,
     DEFAULT_RTSP_ALERT_MINUTES,
     DEFAULT_RTSP_ALERTS,
+    DEFAULT_RTSP_ALTERNATE,
     DEFAULT_RTSP_CAMERA,
     DEFAULT_RTSP_DRIVING,
     DEFAULT_RTSP_DRIVING_GRACE,
@@ -125,6 +127,10 @@ def _rtsp_schema(options: Mapping[str, Any]) -> vol.Schema:
                     options=RTSP_CAMERAS, translation_key=CONF_RTSP_CAMERA
                 )
             ),
+            vol.Required(
+                CONF_RTSP_ALTERNATE,
+                default=options.get(CONF_RTSP_ALTERNATE, DEFAULT_RTSP_ALTERNATE),
+            ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
             vol.Required(
                 CONF_RTSP_ALERTS,
                 default=list(options.get(CONF_RTSP_ALERTS, DEFAULT_RTSP_ALERTS)),
@@ -383,7 +389,11 @@ class ProofOptionsFlow(OptionsFlow):
         coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
         rtsp = getattr(coordinator, "rtsp", None)
         urls = (
-            "\n".join(f"`{rtsp.stream_url(device_id)}`" for device_id in coordinator.data)
+            "\n".join(
+                f"`{rtsp.stream_url(device_id, camera)}`"
+                for device_id in coordinator.data
+                for camera in rtsp.cameras(device_id)
+            )
             if rtsp is not None
             else "-"
         )

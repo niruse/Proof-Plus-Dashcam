@@ -119,6 +119,18 @@ class DeviceLiveSession:
             key != besides and key.endswith(suffix) for key in self._watchers
         )
 
+    def viewer_camera(self) -> int | None:
+        """The camera a viewer (a camera entity or a snapshot) is watching, if any.
+
+        Their claims end in the camera number; the RTSP stream and the settings
+        controls use keys that do not.
+        """
+        for key in self._watchers:
+            tail = key.rsplit(":", 1)[-1]
+            if tail.isdigit():
+                return int(tail)
+        return None
+
     async def async_acquire(self, cam_index: int | None) -> ProofWebRTCClient | None:
         """Return a client streaming the requested camera, starting it if needed.
 

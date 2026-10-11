@@ -125,8 +125,9 @@ Station…) as an ordinary RTSP camera. Choose the mode when you add the integra
 | **Only when triggered** | Live video while a trigger is active, and a still **standby picture** the rest of the time. |
 | **Always** | Live video whenever the NVR is connected. |
 
-Give the NVR `rtsp://<home-assistant-ip>:8564/proof_<device id>` — the exact address is shown on the
-**RTSP / NVR** options page and in the `url` attribute of `binary_sensor.<device>_rtsp_live_video`.
+Give the NVR `rtsp://<home-assistant-ip>:8564/proof_<device id>` for the front camera and
+`…/proof_<device id>_rear` for the rear one — the exact addresses are on the **RTSP / NVR** options
+page and in the `url` / `rear_url` attributes of `binary_sensor.<device>_rtsp_live_video`.
 Add a user name and password under the same page if the NVR should log in. Video only, H.264,
 960×540 at about 20 fps — passed through exactly as the dashcam encodes it, nothing is re-encoded.
 
@@ -155,10 +156,15 @@ connected nothing reaches the dashcam in either mode.
 
 Good to know:
 
-- The dashcam streams **one camera at a time** over **one session**, shared with the live view
-  cameras and the settings controls. The stream carries the camera chosen under *Camera on the
-  stream* (front by default). While you watch the other camera in Home Assistant the stream shows the
-  standby picture, and it takes the camera back when you stop. The Proof phone app cannot open live
+- **Both cameras.** The dashcam streams **one camera at a time** over **one session** — it ignores
+  an offer for a second video track, or for its other address, and refuses a second session. So with
+  *Cameras on the stream* set to **both** (the default for a two-camera dashcam), each camera gets its
+  own address and NVR channel, and while live the dashcam switches between them every 15 seconds
+  (configurable). Each channel shows live video on its turn and its last picture, marked *Paused*,
+  in between; each switch costs about a second without video. Choose *front* or *rear* for one
+  camera that is live all the time instead.
+- The session is shared with the live-view cameras and the settings controls: a camera you open in
+  Home Assistant keeps the dashcam for as long as you watch, and the Proof phone app cannot open live
   view while the stream is live.
 - Live video starts about 10 seconds after a trigger — the time it takes to reach the dashcam over
   its mobile network — so the very start of an incident is in the dashcam's own event clip rather
