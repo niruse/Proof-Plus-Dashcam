@@ -43,14 +43,24 @@ class ProofDeviceTracker(ProofEntity, TrackerEntity):
         return SourceType.GPS
 
     @property
+    def _current(self) -> bool:
+        """Whether the position is a current fix.
+
+        A dashcam that has lost GPS keeps resending its last position, which
+        on the map is somewhere the car no longer is. Report no position then
+        (the tracker reads unknown); the last one stays in the attributes.
+        """
+        return gps_fix_fresh(self.device or {}) is not False
+
+    @property
     def latitude(self) -> float | None:
-        """Latitude of the device."""
-        return self._gps.get("lat")
+        """Latitude of the device, while the fix is current."""
+        return self._gps.get("lat") if self._current else None
 
     @property
     def longitude(self) -> float | None:
-        """Longitude of the device."""
-        return self._gps.get("lng")
+        """Longitude of the device, while the fix is current."""
+        return self._gps.get("lng") if self._current else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -62,10 +72,13 @@ class ProofDeviceTracker(ProofEntity, TrackerEntity):
             "speed": gps.get("speed"),
             "gps_valid": gps.get("valid"),
             # False when the dashcam is repeating an old position because it
-            # cannot see satellites; the position is then where it last could.
+            # cannot see satellites; the tracker then shows no position.
             "gps_fix_fresh": gps_fix_fresh(self.device or {}),
             "satellites": gps.get("satu"),
         }
         if gps.get("time"):
             attrs["gps_time"] = dt_util.utc_from_timestamp(gps["time"]).isoformat()
+        if not self._current:
+            attrs["last_known_latitude"] = gps.get("lat")
+            attrs["last_known_longitude"] = gps.get("lng")
         return attrs
