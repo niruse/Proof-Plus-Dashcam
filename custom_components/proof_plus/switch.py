@@ -25,6 +25,7 @@ from .const import (
     CONF_SNAPSHOT_INTERVAL,
     DEFAULT_SNAPSHOT_INTERVAL,
     DOMAIN,
+    RTSP_MODE_TRIGGER,
 )
 from .coordinator import ProofCoordinator
 from .entity import ProofEntity
@@ -116,6 +117,10 @@ async def async_setup_entry(
             ProofAlertSwitch(coordinator, first_device, description)
             for description in ALERTS
         )
+    # Live RTSP video on demand, for the "only when triggered" mode.
+    entities.extend(
+        ProofRtspLiveSwitch(coordinator, device_id) for device_id in coordinator.data
+    )
     # Auto-refresh only makes sense when there are snapshots to refresh.
     if entry.options.get(CONF_ENABLE_LIVE) and entry.options.get(CONF_ENABLE_SNAPSHOT):
         minutes = entry.options.get(CONF_SNAPSHOT_INTERVAL, DEFAULT_SNAPSHOT_INTERVAL)
@@ -124,6 +129,40 @@ async def async_setup_entry(
             for device_id in coordinator.data
         )
     async_add_entities(entities)
+
+
+class ProofRtspLiveSwitch(ProofEntity, SwitchEntity):
+    """Hold the RTSP stream on live video until switched off.
+
+    Only meaningful when RTSP is set to "only when triggered"; the stream then
+    carries the standby picture again once no other trigger is active.
+    """
+
+    _attr_translation_key = "rtsp_live"
+    _attr_icon = "mdi:record-circle"
+
+    def __init__(self, coordinator: ProofCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_rtsp_live"
+
+    @property
+    def available(self) -> bool:
+        """Available while RTSP is in the "only when triggered" mode."""
+        rtsp = self.coordinator.rtsp
+        return super().available and rtsp is not None and rtsp.mode == RTSP_MODE_TRIGGER
+
+    @property
+    def is_on(self) -> bool:
+        """Whether this switch is holding live video on."""
+        return self.coordinator.rtsp.manual(self._device_id)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Start live video."""
+        self.coordinator.rtsp.set_manual(self._device_id, True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Release the hold."""
+        self.coordinator.rtsp.set_manual(self._device_id, False)
 
 
 class ProofAutoSnapshotSwitch(ProofEntity, SwitchEntity, RestoreEntity):

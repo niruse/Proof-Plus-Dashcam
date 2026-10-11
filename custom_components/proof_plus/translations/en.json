@@ -19,6 +19,16 @@
       "reauth_confirm": {
         "title": "Reconnect Proof",
         "description": "The Proof session for {username} has expired — the cloud allows one login per account, so this happens when you sign in on the phone or after a few days. Press Submit to text a fresh code; your password is remembered."
+      },
+      "rtsp": {
+        "title": "RTSP for an NVR",
+        "description": "Offer the dashcam to an NVR (HiLook/Hikvision, Frigate, Blue Iris, Synology…) as an RTSP stream. Live video uses the dashcam's mobile data. Triggers, port and login can be changed later under Configure → RTSP / NVR.",
+        "data": {
+          "rtsp_mode": "RTSP stream"
+        },
+        "data_description": {
+          "rtsp_mode": "Off: no RTSP server. Only when triggered: live video while an alert, a drive, the RTSP live switch or an automation calls for it, and a still standby picture the rest of the time, so the NVR stays connected. Always: live video whenever the NVR is connected — it streams over the dashcam's mobile data for as long as the NVR records, and keeps the dashcam awake while parked."
+        }
       }
     },
     "error": {
@@ -37,6 +47,13 @@
     "step": {
       "init": {
         "title": "Proof options",
+        "menu_options": {
+          "general": "General",
+          "rtsp": "RTSP / NVR"
+        }
+      },
+      "general": {
+        "title": "General",
         "data": {
           "scan_interval": "Polling interval (seconds)",
           "enable_snapshot": "Show latest event snapshot (image entity)",
@@ -62,7 +79,34 @@
           "snapshot_interval": "How often the camera snapshots refresh while the auto-refresh switch is on. Each refresh wakes the dashcam and uses its mobile data.",
           "message_images": "Some alerts (anti-theft, vibration, collision) leave a photo from each camera. This is how many of those photos to keep as entities. 0 turns them off."
         }
+      },
+      "rtsp": {
+        "title": "RTSP / NVR",
+        "description": "Give the NVR this address (one per dashcam):\n{urls}",
+        "data": {
+          "rtsp_mode": "RTSP stream",
+          "rtsp_camera": "Camera on the stream",
+          "rtsp_alerts": "Alerts that start live video",
+          "rtsp_alert_minutes": "Live video after an alert (minutes)",
+          "rtsp_driving": "Live video while driving",
+          "rtsp_driving_grace": "Keep live after the ignition goes off (minutes)",
+          "rtsp_port": "RTSP port",
+          "rtsp_username": "RTSP user name (optional)",
+          "rtsp_password": "RTSP password (optional)"
+        },
+        "data_description": {
+          "rtsp_mode": "Off: no RTSP server. Only when triggered: live video while an alert, a drive, the RTSP live switch or an automation calls for it, and a still standby picture the rest of the time, so the NVR stays connected. Always: live video whenever the NVR is connected — it streams over the dashcam's mobile data for as long as the NVR records, and keeps the dashcam awake while parked.",
+          "rtsp_camera": "The dashcam streams one camera at a time. While you watch the other camera in Home Assistant, the stream shows the standby picture and returns afterwards.",
+          "rtsp_alerts": "Only in the 'only when triggered' mode. Ignition is the separate while-driving trigger below.",
+          "rtsp_alert_minutes": "Another alert in that time extends it.",
+          "rtsp_driving": "From ignition on until it goes off, plus the time below.",
+          "rtsp_port": "The NVR connects to this port on Home Assistant. Changing it restarts the stream.",
+          "rtsp_username": "Leave both empty for no login. If set, the NVR needs them too."
+        }
       }
+    },
+    "error": {
+      "rtsp_credentials": "Enter both a user name and a password, or neither."
     }
   },
   "entity": {
@@ -133,6 +177,9 @@
       },
       "sd_card": {
         "name": "SD card"
+      },
+      "rtsp_live": {
+        "name": "RTSP live video"
       }
     },
     "camera": {
@@ -219,6 +266,9 @@
       },
       "auto_snapshot": {
         "name": "Auto refresh snapshots"
+      },
+      "rtsp_live": {
+        "name": "RTSP live"
       }
     },
     "number": {
@@ -263,6 +313,65 @@
           "2": "2 hours",
           "4": "4 hours",
           "8": "8 hours"
+        }
+      },
+      "rtsp_mode": {
+        "name": "RTSP stream",
+        "state": {
+          "off": "Off",
+          "trigger": "Only when triggered",
+          "always": "Always"
+        }
+      }
+    }
+  },
+  "selector": {
+    "rtsp_mode": {
+      "options": {
+        "off": "Off",
+        "trigger": "Only when triggered",
+        "always": "Always"
+      }
+    },
+    "rtsp_camera": {
+      "options": {
+        "front": "Front",
+        "rear": "Rear"
+      }
+    },
+    "rtsp_alerts": {
+      "options": {
+        "shake": "Vibration / anti-theft",
+        "coll": "Collision",
+        "sos": "Share button (SOS)",
+        "fence": "Geofence",
+        "overspeed": "Over-speed",
+        "neutral": "Idling"
+      }
+    }
+  },
+  "services": {
+    "rtsp_trigger": {
+      "name": "Start live RTSP video",
+      "description": "Put the RTSP stream on live video for a while. Needs RTSP set to 'only when triggered'.",
+      "fields": {
+        "device_id": {
+          "name": "Dashcam",
+          "description": "The dashcams to start; all of them if left empty."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "How long; the alert duration from Configure if left empty."
+        }
+      }
+    },
+    "rtsp_stop": {
+      "name": "Stop live RTSP video",
+      "description": "End every trigger now and go back to the standby picture.",
+      "fields": {
+        "device_id": {
+          "name": "Dashcam",
+          "description": "The dashcams to stop; all of them if left empty."
         }
       }
     }

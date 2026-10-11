@@ -34,6 +34,11 @@ _LOGGER = logging.getLogger(__name__)
 
 STORE_SUFFIX = ".device_props"
 
+# How long a settings or storage read keeps the dashcam session after it is
+# done, so the reads a button makes back to back share one session (the
+# dashcam wants a pause between sessions) without holding it open for good.
+CONTROL_LINGER = 20
+
 
 def _store_key(entry_id: str) -> str:
     return f"{DOMAIN}.{entry_id}{STORE_SUFFIX}"
@@ -106,6 +111,9 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.latest_events: dict[str, list[dict[str, Any]]] = {}
         # One shared live session per dashcam (see camera.DeviceLiveSession).
         self._live_sessions: dict[str, Any] = {}
+        self._control_timers: dict[str, Any] = {}
+        # The RTSP output, when it is set up (see rtsp.ProofRtsp).
+        self.rtsp: Any = None
         # Last known device settings per dashcam, read on demand over the
         # control channel (reading them requires connecting to the device).
         # They are kept on disk so the controls still work after a restart
@@ -316,10 +324,13 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self, hass: HomeAssistant, device_id: str
     ) -> dict[str, Any] | None:
         """Read the dashcam's own settings (needs a session to the device)."""
-        client = await self.live_session(hass, device_id).async_acquire(0)
-        if client is None:
-            return None
-        props = await client.async_get_props()
+        client = await self._async_control_client(hass, device_id)
+        try:
+            if client is None:
+                return None
+            props = await client.async_get_props()
+        finally:
+            self._schedule_control_release(hass, device_id)
         if props is not None:
             self.device_props[device_id] = props
             self._save_props()
@@ -330,20 +341,23 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self, hass: HomeAssistant, device_id: str, props: dict[str, Any]
     ) -> bool:
         """Change dashcam settings, then refresh the cached values."""
-        client = await self.live_session(hass, device_id).async_acquire(0)
-        if client is None:
-            return False
-        if not await client.async_set_props(props):
-            return False
-        # Reflect the change immediately, then confirm from the device.
-        self.device_props.setdefault(device_id, {}).update(props)
-        self._save_props()
-        self.async_update_listeners()
-        if (fresh := await client.async_get_props()) is not None:
-            self.device_props[device_id] = fresh
+        client = await self._async_control_client(hass, device_id)
+        try:
+            if client is None:
+                return False
+            if not await client.async_set_props(props):
+                return False
+            # Reflect the change immediately, then confirm from the device.
+            self.device_props.setdefault(device_id, {}).update(props)
             self._save_props()
             self.async_update_listeners()
-        return True
+            if (fresh := await client.async_get_props()) is not None:
+                self.device_props[device_id] = fresh
+                self._save_props()
+                self.async_update_listeners()
+            return True
+        finally:
+            self._schedule_control_release(hass, device_id)
 
     async def async_get_storage(
         self, hass: HomeAssistant, device_id: str
@@ -352,10 +366,13 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
 
         This needs a live session to the camera, so it is only done on request.
         """
-        client = await self.live_session(hass, device_id).async_acquire(0)
-        if client is None:
-            return None
-        storage = await client.async_get_storage()
+        client = await self._async_control_client(hass, device_id)
+        try:
+            if client is None:
+                return None
+            storage = await client.async_get_storage()
+        finally:
+            self._schedule_control_release(hass, device_id)
         if storage:
             self.storage[device_id] = storage
             self._save_props()
@@ -370,6 +387,32 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.alerts = alerts
         self.async_update_listeners()
         return True
+
+    async def _async_control_client(self, hass: HomeAssistant, device_id: str) -> Any:
+        """The dashcam session, for a settings or storage exchange.
+
+        Registered as a watcher of its own, so the session is not left open
+        afterwards with nobody holding it — and taken on whichever camera is
+        showing, so a settings read does not pull a viewer (or the RTSP
+        stream) off the rear camera.
+        """
+        session = self.live_session(hass, device_id)
+        session.add_watcher(f"{device_id}:control")
+        self._schedule_control_release(hass, device_id)
+        return await session.async_acquire(None)
+
+    @callback
+    def _schedule_control_release(self, hass: HomeAssistant, device_id: str) -> None:
+        """Let go of the control claim once the reads have gone quiet."""
+        if (handle := self._control_timers.pop(device_id, None)) is not None:
+            handle.cancel()
+        session = self.live_session(hass, device_id)
+        self._control_timers[device_id] = hass.loop.call_later(
+            CONTROL_LINGER,
+            lambda: hass.async_create_task(
+                session.async_release(f"{device_id}:control")
+            ),
+        )
 
     def live_session(self, hass: HomeAssistant, device_id: str) -> Any:
         """Return the shared live session for a dashcam, creating it on first use."""
