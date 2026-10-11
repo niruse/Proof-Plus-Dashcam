@@ -82,10 +82,11 @@
       },
       "rtsp": {
         "title": "RTSP / NVR",
-        "description": "Give the NVR this address (one per dashcam):\n{urls}",
+        "description": "Give the NVR these addresses (one per camera):\n{urls}",
         "data": {
           "rtsp_mode": "RTSP stream",
-          "rtsp_camera": "Camera on the stream",
+          "rtsp_camera": "Cameras on the stream",
+          "rtsp_alternate_seconds": "With both: switch camera every (seconds)",
           "rtsp_alerts": "Alerts that start live video",
           "rtsp_alert_minutes": "Live video after an alert (minutes)",
           "rtsp_driving": "Live video while driving",
@@ -96,12 +97,13 @@
         },
         "data_description": {
           "rtsp_mode": "Off: no RTSP server. Only when triggered: live video while an alert, a drive, the RTSP live switch or an automation calls for it, and a still standby picture the rest of the time, so the NVR stays connected. Always: live video whenever the NVR is connected — it streams over the dashcam's mobile data for as long as the NVR records, and keeps the dashcam awake while parked.",
-          "rtsp_camera": "The dashcam streams one camera at a time. While you watch the other camera in Home Assistant, the stream shows the standby picture and returns afterwards.",
+          "rtsp_camera": "The dashcam streams one camera at a time. 'Both' gives each camera its own address (an NVR channel each); while live they take turns, and each shows its last picture between turns. A camera you open in Home Assistant keeps the dashcam while you watch.",
           "rtsp_alerts": "Only in the 'only when triggered' mode. Ignition is the separate while-driving trigger below.",
           "rtsp_alert_minutes": "Another alert in that time extends it.",
           "rtsp_driving": "From ignition on until it goes off, plus the time below.",
           "rtsp_port": "The NVR connects to this port on Home Assistant. Changing it restarts the stream.",
-          "rtsp_username": "Leave both empty for no login. If set, the NVR needs them too."
+          "rtsp_username": "Leave both empty for no login. If set, the NVR needs them too.",
+          "rtsp_alternate_seconds": "How long each camera stays live before the other takes over. Each switch costs about a second without video."
         }
       }
     },
@@ -336,7 +338,8 @@
     "rtsp_camera": {
       "options": {
         "front": "Front",
-        "rear": "Rear"
+        "rear": "Rear",
+        "both": "Both, taking turns"
       }
     },
     "rtsp_alerts": {

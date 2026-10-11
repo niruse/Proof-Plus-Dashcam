@@ -1,8 +1,8 @@
 """RTSP output, so an NVR can record the dashcam.
 
     dashcam --WebRTC--> ProofWebRTCClient --encoded H.264--> ProofRtspFeed
-      --MPEG-TS over http://127.0.0.1:<feed>/feed/<device>--> go2rtc
-      --rtsp://<home-assistant>:<port>/proof_<device>--> NVR
+      --MPEG-TS over http://127.0.0.1:<feed>/feed/<device>/<camera>--> go2rtc
+      --rtsp://<home-assistant>:<port>/proof_<device>[_rear]--> NVR
 
 go2rtc is the copy Home Assistant ships (/bin/go2rtc), run as a second instance
 with its own configuration: Home Assistant's own instance only listens on
@@ -19,9 +19,11 @@ on the mode:
   proof_plus.rtsp_trigger action. The standby picture the rest of the time.
 
 The dashcam streams one camera at a time over one session, shared with the
-camera entities and the settings controls. A viewer who switches it to the
-other camera wins for as long as they watch; the feed shows the standby
-picture meanwhile and takes the camera back once they leave.
+camera entities and the settings controls — it ignores an offer for a second
+video track or for its "#1" address. So with both cameras on the stream each
+gets its own RTSP path and they take turns while live, each showing its last
+picture between turns. A viewer who opens a camera in Home Assistant keeps
+the dashcam on that camera for as long as they watch.
 """
 from __future__ import annotations
 
@@ -49,6 +51,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_RTSP_ALERT_MINUTES,
     CONF_RTSP_ALERTS,
+    CONF_RTSP_ALTERNATE,
     CONF_RTSP_CAMERA,
     CONF_RTSP_DRIVING,
     CONF_RTSP_DRIVING_GRACE,
@@ -58,6 +61,8 @@ from .const import (
     CONF_RTSP_USERNAME,
     DEFAULT_RTSP_ALERT_MINUTES,
     DEFAULT_RTSP_ALERTS,
+    DEFAULT_RTSP_ALTERNATE,
+    DEFAULT_RTSP_CAMERA,
     DEFAULT_RTSP_DRIVING,
     DEFAULT_RTSP_DRIVING_GRACE,
     DEFAULT_RTSP_MODE,
@@ -94,8 +99,8 @@ KEYFRAME_RETRY_SECONDS = 1
 KEYFRAME_INTERVAL_SECONDS = 2
 # Waits between attempts to reach a dashcam that would not answer.
 RETRY_BACKOFF = (15, 30, 60, 120, 300)
-# How often to check whether the feed's camera can be taken back.
-RECLAIM_SECONDS = 5
+# How often to retry putting the dashcam on the feed's camera.
+RECLAIM_SECONDS = 1
 # Frames queued for the feed before newer ones are dropped.
 LIVE_QUEUE = 300
 # Chunks queued for one reader (go2rtc) before it is cut off.
@@ -109,11 +114,6 @@ GO2RTC_API_OFFSET = 10000
 
 class RtspError(Exception):
     """The RTSP server could not be started."""
-
-
-def stream_name(device_id: str) -> str:
-    """The RTSP path an NVR asks for."""
-    return f"proof_{device_id}"
 
 
 def _port_free(port: int) -> bool:
@@ -159,24 +159,29 @@ def _frame_to_jpeg(frame: Any) -> bytes:
 
 
 class ProofRtspFeed:
-    """The stream go2rtc pulls for one dashcam."""
+    """The stream go2rtc pulls for one camera of one dashcam."""
 
-    def __init__(self, rtsp: ProofRtsp, device_id: str) -> None:
+    def __init__(self, rtsp: ProofRtsp, device_id: str, camera: int) -> None:
         self._rtsp = rtsp
         self._hass = rtsp.hass
         self._device_id = device_id
-        self._key = f"{device_id}:{SESSION_KEY}"
+        self._camera = camera
+        self._name = "rear" if camera else "front"
+        # Not ending in a digit: those claims belong to viewers of a camera.
+        self._key = f"{device_id}:{SESSION_KEY}-{self._name}"
         self._readers: set[asyncio.Queue[bytes | None]] = set()
         self._task: asyncio.Task | None = None
         # True while live video (not the standby picture) is going out.
         self.live = False
         self.last_error: str | None = None
-        # Per camera: what the standby picture is built from, and the build.
-        self._pictures: dict[int, bytes] = {}
-        self._sizes: dict[int, tuple[int, int]] = {}
-        self._profiles: dict[int, tuple[str, str]] = {}
-        self._standby: dict[int, tuple[tuple, list[bytes]]] = {}
-        self._building: dict[int, asyncio.Task] = {}
+        # What the standby picture is built from, and the build.
+        self._picture: bytes | None = None
+        self._size: tuple[int, int] | None = None
+        self._profile: tuple[str, str] = ("main", "3.1")
+        self._standby: tuple[tuple, list[bytes]] | None = None
+        self._building: asyncio.Task | None = None
+        # The decoded picture behind the newest live frame sent.
+        self._last_view: Any = None
 
     @property
     def readers(self) -> int:
@@ -189,7 +194,7 @@ class ProofRtspFeed:
         self._readers.add(queue)
         if self._task is None or self._task.done():
             self._task = self._hass.async_create_background_task(
-                self._produce(), f"{DOMAIN} rtsp feed {self._device_id}"
+                self._produce(), f"{DOMAIN} rtsp feed {self._device_id} {self._name}"
             )
         self._rtsp.async_notify()
         try:
@@ -228,59 +233,52 @@ class ProofRtspFeed:
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
             self._task = None
-        for task in self._building.values():
-            task.cancel()
+        if self._building is not None:
+            self._building.cancel()
 
     # --- standby picture ------------------------------------------------------
 
-    def _standby_signature(self, camera: int) -> tuple:
-        still = self._pictures.get(camera) or self._rtsp.cached_still(
-            self._device_id, camera
-        )
+    def _still(self) -> bytes | None:
+        return self._picture or self._rtsp.cached_still(self._device_id, self._camera)
+
+    def _standby_signature(self) -> tuple:
+        still = self._still()
         return (
             id(still) if still else None,
-            self._sizes.get(camera),
-            self._profiles.get(camera, ("main", "3.1")),
-            self._rtsp.standby_caption(),
+            self._size,
+            self._profile,
+            self._rtsp.standby_caption(self._device_id, self._camera),
         )
 
-    def _start_standby_build(self, camera: int) -> asyncio.Task:
-        signature = self._standby_signature(camera)
-        still = self._pictures.get(camera) or self._rtsp.cached_still(
-            self._device_id, camera
-        )
-        profile, level = self._profiles.get(camera, ("main", "3.1"))
+    def _start_standby_build(self) -> asyncio.Task:
+        signature = self._standby_signature()
+        still = self._still()
+        profile, level = self._profile
 
         async def _build() -> list[bytes]:
             units = await self._hass.async_add_executor_job(
-                _build_standby,
-                still,
-                self._sizes.get(camera),
-                signature[3],
-                profile,
-                level,
+                _build_standby, still, self._size, signature[3], profile, level
             )
-            self._standby[camera] = (signature, units)
+            self._standby = (signature, units)
             return units
 
-        task = self._hass.async_create_background_task(
-            _build(), f"{DOMAIN} rtsp standby {self._device_id}"
+        self._building = self._hass.async_create_background_task(
+            _build(), f"{DOMAIN} rtsp standby {self._device_id} {self._name}"
         )
-        self._building[camera] = task
-        return task
+        return self._building
 
-    async def _standby_units(self, camera: int, wait: bool) -> list[bytes] | None:
+    async def _standby_units(self, wait: bool) -> list[bytes] | None:
         """The standby picture's access units, rebuilding when it has changed.
 
         With ``wait`` False a rebuild runs in the background and the previous
         picture is returned meanwhile, so the stream never pauses for it.
         """
-        current = self._standby.get(camera)
-        if current is not None and current[0] == self._standby_signature(camera):
+        current = self._standby
+        if current is not None and current[0] == self._standby_signature():
             return current[1]
-        task = self._building.get(camera)
+        task = self._building
         if task is None or task.done():
-            task = self._start_standby_build(camera)
+            task = self._start_standby_build()
         if wait or current is None:
             try:
                 return await task
@@ -290,16 +288,19 @@ class ProofRtspFeed:
                 raise
         return current[1]
 
-    async def _remember_view(self, camera: int, client: Any) -> None:
-        """Make the last live picture the next standby picture."""
-        frame = getattr(client, "latest_frame", None)
+    async def _remember_view(self) -> None:
+        """Make the last live picture the next standby picture.
+
+        Taken from the frame kept while live rather than from the session's
+        newest one: by the time this camera's turn ends, the session may
+        already be showing the other camera.
+        """
+        frame = self._last_view
         if frame is None:
             return
-        self._sizes[camera] = (frame.width, frame.height)
+        self._size = (frame.width, frame.height)
         try:
-            self._pictures[camera] = await self._hass.async_add_executor_job(
-                _frame_to_jpeg, frame
-            )
+            self._picture = await self._hass.async_add_executor_job(_frame_to_jpeg, frame)
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Could not keep the last live picture", exc_info=True)
 
@@ -309,8 +310,9 @@ class ProofRtspFeed:
         """Send live video or the standby picture for as long as anyone reads."""
         hass = self._hass
         loop = hass.loop
-        session = self._rtsp.coordinator.live_session(hass, self._device_id)
-        camera = self._rtsp.camera_index(self._device_id)
+        device_id = self._device_id
+        session = self._rtsp.coordinator.live_session(hass, device_id)
+        camera = self._camera
         other = 1 - camera
         muxer = TSMuxer()
         start = loop.time()
@@ -318,7 +320,7 @@ class ProofRtspFeed:
 
         def sink(data: bytes, timestamp: int) -> None:
             # Called on the event loop for every frame the dashcam sends.
-            # Frames from the other camera (a viewer switched it) stay out.
+            # Frames from the other camera stay out.
             if session.current_camera != camera:
                 return
             try:
@@ -337,6 +339,7 @@ class ProofRtspFeed:
         def clock() -> int:
             return int((loop.time() - start) * 90000)
 
+        units: list[bytes] = []
         claimed = False
         acquiring: asyncio.Future | None = None
         attached: Any = None
@@ -349,6 +352,7 @@ class ProofRtspFeed:
         last_reclaim = 0.0
         last_keyframe_at = 0.0
         keyframe_asked_at = 0.0
+        had_turn = False
         tick = 0
         next_tick = loop.time()
 
@@ -359,28 +363,37 @@ class ProofRtspFeed:
 
         async def to_standby() -> None:
             """Back to the standby picture, starting on its keyframe."""
-            nonlocal waiting_key, tick, next_tick
-            _LOGGER.debug("RTSP %s: standby picture", self._device_id)
+            nonlocal waiting_key, tick, next_tick, units
+            _LOGGER.debug("RTSP %s %s: standby picture", device_id, self._name)
             self.live = False
             self._rtsp.async_notify()
             waiting_key = True
+            await self._remember_view()
+            # Wait for the new picture: on a turn change it is shown for only
+            # a few seconds, so the previous one must not stand in for it.
+            units = await self._standby_units(wait=True) or units
             tick = 0
             next_tick = loop.time()
-            if attached is not None:
-                await self._remember_view(camera, attached)
 
         async def restart(reason: str) -> None:
             """Drop a session that delivers nothing; try again after a pause."""
-            _LOGGER.debug("RTSP %s: %s", self._device_id, reason)
+            _LOGGER.debug("RTSP %s %s: %s", device_id, self._name, reason)
             self.last_error = reason
             await session.async_restart()
             back_off()
 
         try:
-            units = await self._standby_units(camera, wait=True)
+            units = await self._standby_units(wait=True) or []
             while self._readers:
                 now = loop.time()
-                want = self._rtsp.want_live(self._device_id)
+                want = self._rtsp.want_live(device_id)
+                # With both cameras on the stream they take turns; a camera
+                # somebody is watching in Home Assistant keeps the turn.
+                my_turn = want and self._rtsp.active_camera(device_id) == camera
+                if my_turn and not had_turn:
+                    attached_at = now
+                    last_reclaim = 0.0
+                had_turn = my_turn
 
                 # Hold the dashcam session while live video is wanted, and
                 # (re)open it when there is none — at first, after a failure,
@@ -399,12 +412,13 @@ class ProofRtspFeed:
                 current = session.client
                 if (
                     claimed
+                    and my_turn
                     and acquiring is None
                     and (current is None or not current.alive)
                     and now >= retry_at
                 ):
                     # Open it on our camera, unless somebody is watching the
-                    # other one: then take it as it is and wait our turn.
+                    # other one: then take it as it is and wait.
                     target = None if session.watching_camera(other, self._key) else camera
                     acquiring = asyncio.ensure_future(session.async_acquire(target))
                 if acquiring is not None and acquiring.done():
@@ -412,7 +426,10 @@ class ProofRtspFeed:
                     if not acquiring.cancelled() and acquiring.exception() is None:
                         result = acquiring.result()
                     acquiring = None
-                    _LOGGER.debug("RTSP %s: session %s", self._device_id, "up" if result else "failed")
+                    _LOGGER.debug(
+                        "RTSP %s %s: session %s", device_id, self._name,
+                        "up" if result else "failed",
+                    )
                     if result is None:
                         self.last_error = "Could not reach the dashcam"
                         back_off()
@@ -434,9 +451,11 @@ class ProofRtspFeed:
                     while not frames.empty():
                         frames.get_nowait()
 
-                # Take the camera back once nobody is watching the other one.
+                # On our turn, put the dashcam on our camera — unless somebody
+                # is watching the other one in Home Assistant.
                 if (
-                    client is not None
+                    my_turn
+                    and client is not None
                     and session.current_camera != camera
                     and now - last_reclaim > RECLAIM_SECONDS
                 ):
@@ -445,12 +464,13 @@ class ProofRtspFeed:
                     if not session.watching_camera(other, self._key):
                         hass.async_create_task(session.async_acquire(camera))
 
+                on_our_camera = client is not None and session.current_camera == camera
+
                 # Ask for a keyframe: at once when waiting for one, then every
                 # couple of seconds while live.
                 if (
-                    client is not None
-                    and want
-                    and session.current_camera == camera
+                    my_turn
+                    and on_our_camera
                     and now - keyframe_asked_at
                     > (KEYFRAME_RETRY_SECONDS if waiting_key else KEYFRAME_INTERVAL_SECONDS)
                     and (waiting_key or now - last_keyframe_at > KEYFRAME_INTERVAL_SECONDS)
@@ -466,7 +486,7 @@ class ProofRtspFeed:
                     data = None
                 now = loop.time()
 
-                if data is not None and want and client is not None:
+                if data is not None and my_turn and client is not None:
                     keyframe = is_keyframe(data)
                     if keyframe:
                         last_keyframe_at = now
@@ -476,26 +496,29 @@ class ProofRtspFeed:
                         waiting_key = False
                         offset = clock() - timestamp
                         if (profile := sps_profile(data)) is not None:
-                            self._profiles[camera] = profile
+                            self._profile = profile
                         if not self.live:
-                            _LOGGER.debug("RTSP %s: live video", self._device_id)
+                            _LOGGER.debug("RTSP %s %s: live video", device_id, self._name)
                             self.live = True
                             self.last_error = None
                             failures = 0
                             self._rtsp.async_notify()
                     emit(data, keyframe, timestamp + offset)
+                    self._last_view = client.latest_frame or self._last_view
                     last_frame_at = now
                     continue
 
-                on_our_camera = client is not None and session.current_camera == camera
-                if self.live and now - last_frame_at > STALL_SECONDS:
+                if self.live and not my_turn:
+                    # The other camera's turn (or no longer wanted).
+                    await to_standby()
+                elif self.live and now - last_frame_at > STALL_SECONDS:
                     await to_standby()
                     if on_our_camera:
-                        # Same camera, yet nothing for a while: the session
-                        # is dead even if WebRTC has not noticed.
+                        # Our camera, yet nothing for a while: the session is
+                        # dead even if WebRTC has not noticed.
                         await restart("The live video stalled; reconnecting")
                 elif (
-                    want
+                    my_turn
                     and not self.live
                     and on_our_camera
                     and now - attached_at > FIRST_KEYFRAME_SECONDS
@@ -503,11 +526,11 @@ class ProofRtspFeed:
                     attached_at = now
                     await restart("The dashcam sent no picture; reconnecting")
 
-                if not self.live and now >= next_tick:
+                if not self.live and now >= next_tick and units:
                     index = tick % len(units)
                     if index == 0:
                         # Only swap pictures at a keyframe.
-                        units = await self._standby_units(camera, wait=False) or units
+                        units = await self._standby_units(wait=False) or units
                     emit(units[index], index == 0, clock())
                     tick += 1
                     next_tick += 1 / STANDBY_FPS
@@ -517,7 +540,7 @@ class ProofRtspFeed:
             raise
         except Exception as err:  # noqa: BLE001
             self.last_error = str(err)
-            _LOGGER.exception("RTSP feed for %s failed", self._device_id)
+            _LOGGER.exception("RTSP feed for %s %s failed", device_id, self._name)
         finally:
             if acquiring is not None:
                 acquiring.cancel()
@@ -663,7 +686,10 @@ class ProofRtsp:
         options = entry.options
         self.mode: str = options.get(CONF_RTSP_MODE, DEFAULT_RTSP_MODE)
         self.port: int = int(options.get(CONF_RTSP_PORT, DEFAULT_RTSP_PORT))
-        self._camera = 1 if options.get(CONF_RTSP_CAMERA) == "rear" else 0
+        self._camera_mode: str = options.get(CONF_RTSP_CAMERA, DEFAULT_RTSP_CAMERA)
+        self._alternate = int(options.get(CONF_RTSP_ALTERNATE, DEFAULT_RTSP_ALTERNATE))
+        # Per dashcam with both cameras on: whose turn it is, and since when.
+        self._turns: dict[str, tuple[int, float]] = {}
         self._username: str = options.get(CONF_RTSP_USERNAME) or ""
         self._password: str = options.get(CONF_RTSP_PASSWORD) or ""
         self._alerts: set[str] = set(options.get(CONF_RTSP_ALERTS, DEFAULT_RTSP_ALERTS))
@@ -679,7 +705,7 @@ class ProofRtsp:
         self._windows: dict[str, dict[str, float | None]] = {}
         self._ignition: dict[str, bool] = {}
         self._polled_ignition: dict[str, bool] = {}
-        self._feeds: dict[str, ProofRtspFeed] = {}
+        self._feeds: dict[tuple[str, int], ProofRtspFeed] = {}
         self._server: asyncio.Server | None = None
         self._go2rtc = ProofGo2rtc(hass, entry.entry_id)
         # go2rtc proves itself to the feed with this; the feed only listens on
@@ -755,10 +781,12 @@ class ProofRtsp:
                 "rtmp": {"listen": ""},
                 "log": {"format": "text", "level": "info"},
                 "streams": {
-                    stream_name(device_id): (
-                        f"http://127.0.0.1:{feed_port}/feed/{device_id}?key={self._key}"
+                    self.stream_name(device_id, camera): (
+                        f"http://127.0.0.1:{feed_port}/feed/{device_id}/{camera}"
+                        f"?key={self._key}"
                     )
                     for device_id in self.coordinator.data
+                    for camera in self.cameras(device_id)
                 },
             }
             await self._go2rtc.async_start(config)
@@ -798,9 +826,12 @@ class ProofRtsp:
             target = urlsplit(parts[1] if len(parts) > 1 else "")
             segments = target.path.strip("/").split("/")
             key = (parse_qs(target.query).get("key") or [""])[0]
-            device_id = segments[1] if len(segments) == 2 and segments[0] == "feed" else None
+            device_id = camera = None
+            if len(segments) == 3 and segments[0] == "feed" and segments[2].isdigit():
+                device_id, camera = segments[1], int(segments[2])
             if (
                 device_id not in self.coordinator.data
+                or camera not in self.cameras(device_id)
                 or not secrets.compare_digest(key, self._key)
             ):
                 writer.write(
@@ -814,7 +845,7 @@ class ProofRtsp:
                 b"Cache-Control: no-cache\r\nConnection: close\r\n\r\n"
             )
             await writer.drain()
-            await self.feed(device_id).async_serve(writer)
+            await self.feed(device_id, camera).async_serve(writer)
         except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, TimeoutError):
             pass
         except (ConnectionError, OSError):
@@ -824,34 +855,78 @@ class ProofRtsp:
 
     # --- what the stream shows --------------------------------------------------
 
-    def feed(self, device_id: str) -> ProofRtspFeed:
-        """The feed for a dashcam, created on first use."""
-        if device_id not in self._feeds:
-            self._feeds[device_id] = ProofRtspFeed(self, device_id)
-        return self._feeds[device_id]
+    def feed(self, device_id: str, camera: int) -> ProofRtspFeed:
+        """The feed for one camera of a dashcam, created on first use."""
+        if (device_id, camera) not in self._feeds:
+            self._feeds[(device_id, camera)] = ProofRtspFeed(self, device_id, camera)
+        return self._feeds[(device_id, camera)]
 
     @property
     def go2rtc_log(self) -> list[str]:
         """The last lines go2rtc printed (for diagnostics)."""
         return list(self._go2rtc.output)
 
+    def _feeds_of(self, device_id: str) -> list[ProofRtspFeed]:
+        return [
+            feed
+            for camera in self.cameras(device_id)
+            if (feed := self._feeds.get((device_id, camera))) is not None
+        ]
+
     def is_live(self, device_id: str) -> bool:
         """Whether live video (not the standby picture) is going out."""
-        feed = self._feeds.get(device_id)
-        return bool(feed and feed.live)
+        return any(feed.live for feed in self._feeds_of(device_id))
 
-    def camera_index(self, device_id: str) -> int:
-        """Which camera the stream carries (front unless rear chosen and present)."""
+    def has_rear(self, device_id: str) -> bool:
+        """Whether the dashcam has a rear camera."""
         device = self.coordinator.data.get(device_id) or {}
-        has_rear = bool(((device.get("stats") or {}).get("caps") or {}).get("bcamera"))
-        return self._camera if has_rear else 0
+        return bool(((device.get("stats") or {}).get("caps") or {}).get("bcamera"))
+
+    def cameras(self, device_id: str) -> list[int]:
+        """The cameras that get a stream (0 = front, 1 = rear)."""
+        if not self.has_rear(device_id):
+            return [0]
+        return {"front": [0], "rear": [1]}.get(self._camera_mode, [0, 1])
+
+    def stream_name(self, device_id: str, camera: int) -> str:
+        """The RTSP path an NVR asks for.
+
+        The first stream keeps the plain name, so switching between one
+        camera and both does not move the NVR channel already set up.
+        """
+        if camera == self.cameras(device_id)[0]:
+            return f"proof_{device_id}"
+        return f"proof_{device_id}_rear"
+
+    def active_camera(self, device_id: str) -> int | None:
+        """Which camera's stream gets the live video right now.
+
+        A camera somebody is watching in Home Assistant keeps it. Otherwise,
+        with both streams being pulled, the cameras take turns.
+        """
+        pulled = [feed._camera for feed in self._feeds_of(device_id) if feed.readers]
+        if len(pulled) <= 1:
+            return pulled[0] if pulled else None
+        viewer = self.coordinator.live_session(self.hass, device_id).viewer_camera()
+        if viewer in pulled:
+            return viewer
+        now = time.monotonic()
+        camera, since = self._turns.get(device_id, (pulled[0], now))
+        if now - since >= self._alternate:
+            camera, since = pulled[(pulled.index(camera) + 1) % len(pulled)], now
+        self._turns[device_id] = (camera, since)
+        return camera
 
     def cached_still(self, device_id: str, camera: int) -> bytes | None:
         """The latest still Home Assistant already holds for that camera."""
         return (self.coordinator.stills.get(device_id) or {}).get(camera)
 
-    def standby_caption(self) -> str:
-        """The line written on the standby picture."""
+    def standby_caption(self, device_id: str, camera: int) -> str:
+        """The line written on a camera's standby picture."""
+        if self.want_live(device_id) and len(self.cameras(device_id)) > 1:
+            if self.active_camera(device_id) not in (camera, None):
+                other = "front" if camera else "rear"
+                return f"Paused - the dashcam is showing the {other} camera"
         if self.mode == RTSP_MODE_ALWAYS:
             return "Waiting for the dashcam - reconnecting"
         return "Standby - live video starts when triggered"
@@ -879,10 +954,12 @@ class ProofRtsp:
             return None
         return dt_util.utc_from_timestamp(max(reasons.values()))  # type: ignore[type-var]
 
-    def stream_url(self, device_id: str) -> str:
-        """The URL to give the NVR."""
+    def stream_url(self, device_id: str, camera: int | None = None) -> str:
+        """The URL to give the NVR for a camera (the first stream by default)."""
+        if camera is None:
+            camera = self.cameras(device_id)[0]
         host = self.host or "<home-assistant-ip>"
-        return f"rtsp://{host}:{self.port}/{stream_name(device_id)}"
+        return f"rtsp://{host}:{self.port}/{self.stream_name(device_id, camera)}"
 
     # --- triggers ---------------------------------------------------------------
 
@@ -1011,15 +1088,24 @@ class ProofRtsp:
 
     def state(self, device_id: str) -> dict[str, Any]:
         """Everything an entity shows about the stream."""
-        feed = self._feeds.get(device_id)
+        feeds = self._feeds_of(device_id)
+        cameras = self.cameras(device_id)
         until = self.live_until(device_id)
+        enabled = self.mode != RTSP_MODE_OFF
+        live = next((feed for feed in feeds if feed.live), None)
         return {
             "mode": self.mode,
-            "url": self.stream_url(device_id) if self.mode != RTSP_MODE_OFF else None,
-            "camera": "rear" if self.camera_index(device_id) else "front",
+            "url": self.stream_url(device_id, cameras[0]) if enabled else None,
+            "rear_url": (
+                self.stream_url(device_id, 1) if enabled and len(cameras) > 1 else None
+            ),
+            "cameras": ["rear" if camera else "front" for camera in cameras],
+            "live_camera": live._name if live else None,
             "live_wanted": self.want_live(device_id),
             "triggers": sorted(self.reasons(device_id)) if self.mode == RTSP_MODE_TRIGGER else [],
             "live_until": until.isoformat() if until else None,
-            "nvr_connected": bool(feed and feed.readers),
-            "error": self.error or self._go2rtc.error or (feed.last_error if feed else None),
+            "nvr_connected": any(feed.readers for feed in feeds),
+            "error": self.error
+            or self._go2rtc.error
+            or next((feed.last_error for feed in feeds if feed.last_error), None),
         }

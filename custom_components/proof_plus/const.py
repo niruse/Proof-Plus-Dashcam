@@ -95,6 +95,7 @@ MESSAGE_PHOTO_WINDOW = 120
 CONF_RTSP_MODE = "rtsp_mode"
 CONF_RTSP_PORT = "rtsp_port"
 CONF_RTSP_CAMERA = "rtsp_camera"
+CONF_RTSP_ALTERNATE = "rtsp_alternate_seconds"
 CONF_RTSP_USERNAME = "rtsp_username"
 CONF_RTSP_PASSWORD = "rtsp_password"
 CONF_RTSP_ALERTS = "rtsp_alerts"
@@ -114,8 +115,12 @@ DEFAULT_RTSP_MODE = RTSP_MODE_OFF
 # own 8555/18554 and the CuboAI integration's 8556-8558.
 DEFAULT_RTSP_PORT = 8564
 
-RTSP_CAMERAS = ["front", "rear"]
-DEFAULT_RTSP_CAMERA = "front"
+# The dashcam streams one camera at a time (it ignores an offer for a second
+# video track, or for "#1", and allows one session), so "both" gives each
+# camera its own stream and takes turns between them while live.
+RTSP_CAMERAS = ["front", "rear", "both"]
+DEFAULT_RTSP_CAMERA = "both"
+DEFAULT_RTSP_ALTERNATE = 15
 
 # Alert types that can start live video, by the "type" the cloud gives each
 # alert. Ignition ("acc") is the separate while-driving trigger.
