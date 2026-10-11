@@ -99,6 +99,7 @@ class ProofApiClient:
         on_tokens: Callable[[dict[str, Any]], None] | None = None,
         access_token: str | None = None,
         token_expires_at: float = 0.0,
+        uid: str | None = None,
     ) -> None:
         self._session = session
         self._username = username
@@ -111,7 +112,9 @@ class ProofApiClient:
         # do not lean on the refresh grant more than necessary.
         self._token_expires_at: float = token_expires_at
         self._token_lock = asyncio.Lock()
-        self.uid: str | None = None
+        # The account id only comes back with a token, so a session resumed
+        # from a stored access token has to be told it.
+        self.uid: str | None = uid
         self._im_ip: str | None = None
         self._ws_port: int | None = None
 
@@ -180,7 +183,7 @@ class ProofApiClient:
 
         self._access_token = payload["access_token"]
         self._token_expires_at = time.time() + float(payload.get("expires_in", 3600))
-        self.uid = payload.get("uid")
+        self.uid = payload.get("uid") or self.uid
         self._im_ip = payload.get("im_ip", self._im_ip)
         self._ws_port = payload.get("ws_port", self._ws_port)
         if token := payload.get("refresh_token"):
@@ -232,6 +235,15 @@ class ProofApiClient:
         the fragile part, so we avoid it when we do not need it.
         """
         await self._async_ensure_token()
+
+    async def async_renew(self) -> None:
+        """Renew the session now, while the current access token still works.
+
+        Raises ProofAuthError if the cloud will not renew it, in which case
+        only a fresh SMS login will keep the session going past its expiry.
+        """
+        async with self._token_lock:
+            await self.async_refresh()
 
     async def _async_ensure_token(self) -> str:
         async with self._token_lock:

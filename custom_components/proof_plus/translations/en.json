@@ -116,6 +116,9 @@
       },
       "last_message": {
         "name": "Last message"
+      },
+      "session_expires": {
+        "name": "Sign-in expires"
       }
     },
     "binary_sensor": {

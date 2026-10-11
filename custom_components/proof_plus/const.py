@@ -37,6 +37,13 @@ DEFAULT_SETTINGS_INTERVAL = 0
 DEFAULT_ALBUM_LIMIT = 5
 MAX_ALBUM_LIMIT = 100
 
+# The Proof cloud's access token lasts about a week. Within this many hours of
+# its expiry, try to renew it while it still works, and if the cloud refuses,
+# ask for a fresh SMS login before anything stops working.
+SESSION_RENEW_HOURS = 24
+# How often to retry the renewal inside that window, in hours.
+SESSION_RENEW_RETRY_HOURS = 1
+
 # Always-on platforms; image/camera are added only when their option is enabled.
 PLATFORMS = [
     "binary_sensor",

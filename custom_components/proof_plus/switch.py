@@ -211,7 +211,10 @@ class ProofAlertSwitch(ProofEntity, SwitchEntity):
     ) -> None:
         super().__init__(coordinator, device_id)
         self.entity_description = description
-        self._attr_unique_id = f"alert_{description.key}_{coordinator.client.uid}"
+        # Keyed by the account the config entry belongs to. Not client.uid: a
+        # session resumed from a stored token only learns that from the entry.
+        account = coordinator.config_entry.unique_id or coordinator.client.uid
+        self._attr_unique_id = f"alert_{description.key}_{account}"
 
     @property
     def available(self) -> bool:
