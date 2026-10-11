@@ -165,6 +165,9 @@
       },
       "session_expires": {
         "name": "Sign-in expires"
+      },
+      "gps_fix_time": {
+        "name": "Last GPS fix"
       }
     },
     "binary_sensor": {

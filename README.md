@@ -22,6 +22,7 @@ Per dashcam on your account:
 | `sensor` Device temperature | Internal device temperature (°C) |
 | `sensor` GSM signal | Cellular signal strength (dBm) |
 | `sensor` Last seen | Timestamp of the last report |
+| `sensor` Last GPS fix | When the dashcam last had a satellite fix. Much older than *Last seen* means it has lost GPS and keeps reporting its last position — *GPS fix* then reads off |
 | `sensor` Last message | The newest alert the cloud pushed, with the recent ones as attributes |
 | `image` Front/Rear snapshot | A still from each camera, taken on demand (with live view enabled) |
 | `image` Alert photo 1…N | The pictures the dashcam saved for recent alerts |

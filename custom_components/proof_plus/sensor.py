@@ -27,7 +27,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .coordinator import ProofCoordinator
+from .coordinator import ProofCoordinator, last_report
 from .entity import ProofEntity
 
 
@@ -40,8 +40,13 @@ def _status_stats(dev: dict[str, Any]) -> dict[str, Any]:
 
 
 def _last_seen(dev: dict[str, Any]) -> datetime | None:
-    stime = (dev.get("status") or {}).get("stime")
-    return dt_util.utc_from_timestamp(stime) if stime else None
+    reported = last_report(dev)
+    return dt_util.utc_from_timestamp(reported) if reported else None
+
+
+def _gps_fix_time(dev: dict[str, Any]) -> datetime | None:
+    fix = _gps(dev).get("time")
+    return dt_util.utc_from_timestamp(fix) if fix else None
 
 
 def _total_distance(dev: dict[str, Any]) -> float | None:
@@ -114,6 +119,14 @@ SENSORS: tuple[ProofSensorDescription, ...] = (
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=_last_seen,
+    ),
+    ProofSensorDescription(
+        key="gps_fix_time",
+        translation_key="gps_fix_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:crosshairs-question",
+        value_fn=_gps_fix_time,
     ),
     ProofSensorDescription(
         key="free_memory",
