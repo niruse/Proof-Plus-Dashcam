@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, RTSP_MODE_OFF
-from .coordinator import ProofCoordinator
+from .coordinator import ProofCoordinator, gps_fix_fresh
 from .entity import ProofEntity
 
 
@@ -52,7 +52,7 @@ BINARY_SENSORS: tuple[ProofBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:crosshairs-gps",
-        value_fn=lambda dev: ((dev.get("status") or {}).get("gps") or {}).get("valid"),
+        value_fn=gps_fix_fresh,
     ),
 )
 

@@ -79,6 +79,43 @@ def async_clear_login_notice(hass: HomeAssistant, entry: ConfigEntry) -> None:
     persistent_notification.async_dismiss(hass, _login_notice_id(entry))
 
 
+# A fix this much older than the dashcam's latest report means it has lost
+# GPS and is repeating its last position.
+GPS_STALE_SECONDS = 600
+
+
+def last_report(device: dict[str, Any]) -> float | None:
+    """When the dashcam last reported anything, in epoch seconds.
+
+    ``status.stime`` alone is not it: on 2026-10-09 it froze along with the
+    GPS fix, while the device kept reporting — the report times in the GPS
+    block (``gtm``/``dtm``, milliseconds) and ``status.dtime`` move on.
+    """
+    status = device.get("status") or {}
+    gps = status.get("gps") or {}
+    times = [status.get("stime"), status.get("dtime")]
+    times += [gps[key] / 1000 for key in ("gtm", "dtm") if gps.get(key)]
+    times = [t for t in times if isinstance(t, (int, float)) and t > 0]
+    return max(times) if times else None
+
+
+def gps_fix_fresh(device: dict[str, Any]) -> bool | None:
+    """Whether the position is a current fix rather than a repeated old one.
+
+    The dashcam keeps ``valid`` set and resends its last position when it
+    cannot see satellites, so compare the fix time with its latest report.
+    """
+    gps = (device.get("status") or {}).get("gps") or {}
+    if not gps:
+        return None
+    if not gps.get("valid"):
+        return False
+    fix, report = gps.get("time"), last_report(device)
+    if not fix or not report:
+        return True
+    return report - fix <= GPS_STALE_SECONDS
+
+
 def _gsm_quality(signal: int | None) -> str | None:
     """Describe a signal level using the bands the app shows."""
     if signal is None:
@@ -277,7 +314,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             # The app shows these two as failing while the car is parked, since
             # the dashcam cannot report either with the ignition off.
             "ignition": ok_if(ignition_on),
-            "positioning": ok_if(bool(gps.get("valid")) and ignition_on),
+            "positioning": ok_if(bool(gps_fix_fresh(device)) and ignition_on),
             # Only known once the storage has been read, which needs a live
             # session to the dashcam; the button does that.
             "sd_card": ok_if(
