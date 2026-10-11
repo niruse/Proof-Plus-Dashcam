@@ -4,7 +4,7 @@ The mobile app's Messages screen is not fetched over HTTP — the cloud pushes
 each alert down the imclient WebSocket as an event, e.g.::
 
     {"msg": "Your car is with ACC ON.", "topic": "ACC ON", "type": "acc",
-     "loc": [31.4464, 34.54606], "time": 1785485831706}
+     "loc": [32.0, 34.8], "time": 1767225600000}
 
 Holding that socket open costs nothing on the dashcam: it is a link between
 Home Assistant and the cloud, and it never wakes the camera.
