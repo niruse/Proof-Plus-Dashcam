@@ -381,5 +381,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "gps_no_fix": {
+      "title": "{name}: GPS not working",
+      "description": "The dashcam is online with the ignition on, but its GPS has had no fix since {since} ({satellites} satellites in view). Location, speed, heading and the overspeed alert depend on it.\n\nTry unplugging the dashcam for 30 seconds and driving under open sky for a few minutes. If that does not help, check the GPS module or antenna and its mount, and anything new on the windscreen near it (metallic tint, toll tag). This notice clears by itself when the GPS has a fix again."
+    }
   }
 }
