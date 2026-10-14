@@ -11,6 +11,7 @@ from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import STORAGE_DIR, Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -82,6 +83,10 @@ def async_clear_login_notice(hass: HomeAssistant, entry: ConfigEntry) -> None:
 # A fix this much older than the dashcam's latest report means it has lost
 # GPS and is repeating its last position.
 GPS_STALE_SECONDS = 600
+# A repair issue after this long driving without a fix, if the dashcam has
+# reported within GPS_REPORT_RECENT_SECONDS (so it is really online).
+GPS_ISSUE_SECONDS = 3600
+GPS_REPORT_RECENT_SECONDS = 900
 
 
 def last_report(device: dict[str, Any]) -> float | None:
@@ -474,12 +479,55 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             raise UpdateFailed("Proof returned no devices for this account")
 
         result = {dev["id"]: dev for dev in devices if "id" in dev}
+        self._check_gps(result)
         await self._async_renew_session_early()
         await self._async_refresh_alerts()
         if self._fetch_events:
             await self._async_refresh_events(result)
             self._attach_message_photos()
         return result
+
+    @callback
+    def _check_gps(self, devices: dict[str, dict[str, Any]]) -> None:
+        """Raise a repair issue while a dashcam drives without a GPS fix.
+
+        With the ignition on, the dashcam should have a current fix within
+        minutes. An hour without one means its GPS is not working (receiver,
+        antenna or mount); the map, speed and overspeed alerts all depend on
+        it. The issue clears by itself with the next current fix.
+        """
+        now = time.time()
+        for device_id, dev in devices.items():
+            issue_id = f"gps_no_fix_{device_id}"
+            gps = (dev.get("status") or {}).get("gps") or {}
+            fix = gps.get("time")
+            ignition = bool((dev.get("stats") or {}).get("acc"))
+            report = last_report(dev)
+            stale = (
+                ignition
+                and gps_fix_fresh(dev) is False
+                and isinstance(fix, (int, float))
+                and fix > 0
+                and report is not None
+                and now - report < GPS_REPORT_RECENT_SECONDS
+                and now - fix > GPS_ISSUE_SECONDS
+            )
+            if stale:
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    issue_id,
+                    is_fixable=False,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="gps_no_fix",
+                    translation_placeholders={
+                        "name": dev.get("name") or device_id,
+                        "since": dt_util.as_local(dt_util.utc_from_timestamp(fix)).strftime("%d/%m/%Y %H:%M"),
+                        "satellites": str(gps.get("satu", 0)),
+                    },
+                )
+            else:
+                ir.async_delete_issue(self.hass, DOMAIN, issue_id)
 
     def _attach_message_photos(self) -> None:
         """Pair each alert with the pictures the dashcam saved for it.

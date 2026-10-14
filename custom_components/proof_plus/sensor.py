@@ -27,12 +27,27 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .coordinator import ProofCoordinator, last_report
+from .coordinator import ProofCoordinator, gps_fix_fresh, last_report
 from .entity import ProofEntity
 
 
 def _gps(dev: dict[str, Any]) -> dict[str, Any]:
     return (dev.get("status") or {}).get("gps") or {}
+
+
+def _gps_now(dev: dict[str, Any], key: str, parked: Any = None) -> Any:
+    """A GPS value, only while it comes from a current fix.
+
+    A dashcam that has lost GPS keeps resending its last fix with speed 0,
+    which reads as "standing still" while the car drives. While the ignition
+    is off a stale fix is expected (parked), so ``parked`` is returned then.
+    """
+    if gps_fix_fresh(dev) is not False:
+        return _gps(dev).get(key)
+    ignition = (dev.get("stats") or {}).get("acc")
+    if ignition is not None and not ignition:
+        return _gps(dev).get(key) if parked is None else parked
+    return None
 
 
 def _status_stats(dev: dict[str, Any]) -> dict[str, Any]:
@@ -68,7 +83,7 @@ SENSORS: tuple[ProofSensorDescription, ...] = (
         device_class=SensorDeviceClass.SPEED,
         native_unit_of_measurement=UnitOfSpeed.KILOMETERS_PER_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda dev: _gps(dev).get("speed"),
+        value_fn=lambda dev: _gps_now(dev, "speed", parked=0.0),
     ),
     ProofSensorDescription(
         key="altitude",
@@ -76,7 +91,7 @@ SENSORS: tuple[ProofSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.METERS,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:altimeter",
-        value_fn=lambda dev: _gps(dev).get("alt"),
+        value_fn=lambda dev: _gps_now(dev, "alt"),
     ),
     ProofSensorDescription(
         key="heading",
@@ -84,7 +99,7 @@ SENSORS: tuple[ProofSensorDescription, ...] = (
         native_unit_of_measurement=DEGREE,
         icon="mdi:compass",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda dev: _gps(dev).get("heading"),
+        value_fn=lambda dev: _gps_now(dev, "heading"),
     ),
     ProofSensorDescription(
         key="temperature",
