@@ -217,9 +217,23 @@ class ProofWebRTCClient:
         return True
 
     def subscribe(self) -> tuple[Any, Any]:
-        """Return relayed (video, audio) tracks for one consumer."""
-        video = self._relay.subscribe(self._video_track) if self._video_track else None
-        audio = self._relay.subscribe(self._audio_track) if self._audio_track else None
+        """Return relayed (video, audio) tracks for one consumer.
+
+        Unbuffered: each consumer only ever holds the newest frame. A buffered
+        relay queues every decoded frame for a consumer that stops reading (a
+        phone that went to sleep mid-stream), and that queue grew until the
+        kernel killed Home Assistant for running out of memory.
+        """
+        video = (
+            self._relay.subscribe(self._video_track, buffered=False)
+            if self._video_track
+            else None
+        )
+        audio = (
+            self._relay.subscribe(self._audio_track, buffered=False)
+            if self._audio_track
+            else None
+        )
         return video, audio
 
     async def async_start(self) -> None:
@@ -245,7 +259,9 @@ class ProofWebRTCClient:
                 # Consume through the relay so browser consumers can subscribe
                 # to the same track independently.
                 self._tasks.append(
-                    asyncio.ensure_future(self._consume(self._relay.subscribe(track)))
+                    asyncio.ensure_future(
+                        self._consume(self._relay.subscribe(track, buffered=False))
+                    )
                 )
             elif track.kind == "audio":
                 self._audio_track = track
