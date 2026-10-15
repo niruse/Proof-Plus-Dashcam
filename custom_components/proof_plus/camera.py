@@ -356,7 +356,7 @@ class ProofCamera(ProofEntity, Camera):
 
         @pc.on("connectionstatechange")
         async def _on_state() -> None:
-            if pc.connectionState in ("failed", "closed"):
+            if pc.connectionState in ("failed", "closed", "disconnected"):
                 await self._async_close_session(session_id)
 
         video, audio = client.subscribe()
