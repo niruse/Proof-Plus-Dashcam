@@ -25,6 +25,7 @@ from homeassistant.components.camera import (
     WebRTCSendMessage,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.event import async_call_later
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -43,6 +44,12 @@ FRAME_WAIT_TIMEOUT = 45
 
 # The dashcam needs a moment between sessions before it will accept a new one.
 SESSION_RETRY_DELAY = 4
+# Keep the dashcam session this long after the last viewer leaves. The dashcam
+# announces every connect and disconnect out loud ("remote connection
+# connected / disconnected"), and its users come and go constantly: a picture
+# card refreshing every ~10 s, an NVR reconnecting, a viewer switching camera.
+# Closing at once turned each of those into two announcements (2026-10-17).
+SESSION_LINGER_SECONDS = 90
 
 
 def _camera_count(device: dict[str, Any]) -> int:
@@ -88,6 +95,7 @@ class DeviceLiveSession:
         # Entities currently watching. The session is shared, so it must only
         # be torn down once the last of them has stopped.
         self._watchers: set[str] = set()
+        self._close_handle: Any = None
 
     @property
     def client(self) -> ProofWebRTCClient | None:
@@ -102,6 +110,12 @@ class DeviceLiveSession:
     def add_watcher(self, key: str) -> None:
         """Note that an entity is watching."""
         self._watchers.add(key)
+        self._cancel_close()
+
+    def _cancel_close(self) -> None:
+        if self._close_handle is not None:
+            self._close_handle()
+            self._close_handle = None
 
     def remove_watcher(self, key: str) -> bool:
         """Drop a watcher; True when nobody is left."""
@@ -137,6 +151,7 @@ class DeviceLiveSession:
         ``None`` takes the session on whichever camera it is already showing,
         for callers that only need the control channel (settings, storage).
         """
+        self._cancel_close()
         async with self._lock:
             if self._client is not None and not self._client.alive:
                 # The connection failed underneath us; start again rather
@@ -186,11 +201,27 @@ class DeviceLiveSession:
             return self._client
 
     async def async_release(self, key: str) -> None:
-        """Stop the session once the last watcher has gone."""
+        """Stop the session SESSION_LINGER_SECONDS after the last watcher has gone.
+
+        Anyone who comes back in the meantime keeps the same session, so the
+        dashcam sees one connection instead of a connect/disconnect per use.
+        """
         async with self._lock:
             self._watchers.discard(key)
             if self._watchers or self._client is None:
                 return
+        self._cancel_close()
+        self._close_handle = async_call_later(
+            self._hass, SESSION_LINGER_SECONDS, self._async_close_if_idle
+        )
+
+    async def _async_close_if_idle(self, _now: Any = None) -> None:
+        self._close_handle = None
+        async with self._lock:
+            if self._watchers or self._client is None:
+                return
+            _LOGGER.debug("Live session for %s idle for %ss; closing",
+                          self._device_id, SESSION_LINGER_SECONDS)
             await self._client.async_stop()
             self._client = None
 
@@ -207,6 +238,7 @@ class DeviceLiveSession:
 
     async def async_stop(self) -> None:
         """Close the session to the dashcam."""
+        self._cancel_close()
         async with self._lock:
             if self._client is not None:
                 await self._client.async_stop()
