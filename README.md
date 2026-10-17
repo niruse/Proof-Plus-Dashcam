@@ -7,6 +7,17 @@ position and telemetry in Home Assistant.
 Unlike the original YAML-based integration, this one uses the current **v5 cloud API**
 (`app-p106.2proof.co.il`) and is fully configured from the UI (config flow, re-auth and options).
 
+## ☕ Support
+
+If you found this project helpful, you can [buy me a coffee](https://coff.ee/niruse)!
+
+## 🚨 Disclaimer
+
+> This is an unofficial integration. You are responsible for the use of your credentials and your
+> data. The author and contributors take no responsibility for any issues, account restrictions or
+> data loss. Use at your own risk.
+
+
 ## Features
 
 Per dashcam on your account:
