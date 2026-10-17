@@ -53,14 +53,40 @@ class ProofDeviceTracker(ProofEntity, TrackerEntity):
         return gps_fix_fresh(self.device or {}) is not False
 
     @property
+    def _alert_position(self) -> dict[str, Any] | None:
+        """Newest alert that carries a position, if it is newer than the GPS fix.
+
+        With its GPS block stuck (no satellites since 2026-10-09) the dashcam
+        still stamps a position on every alert -- ignition on/off, motion,
+        accident -- and that is what the Proof app's map shows. Use it then,
+        rather than leaving the tracker unknown for days.
+        """
+        fix = self._gps.get("time") or 0
+        for message in self.coordinator.messages.get(self._device_id) or []:
+            if message.get("latitude") is None or message.get("longitude") is None:
+                continue
+            when = dt_util.parse_datetime(message.get("time") or "")
+            if when is None or when.timestamp() <= fix:
+                continue
+            return {"lat": message["latitude"], "lng": message["longitude"], "time": when,
+                    "alert": message.get("text") or message.get("type")}
+        return None
+
+    @property
     def latitude(self) -> float | None:
-        """Latitude of the device, while the fix is current."""
-        return self._gps.get("lat") if self._current else None
+        """Latitude: the current fix, else the newest alert position."""
+        if self._current:
+            return self._gps.get("lat")
+        alert = self._alert_position
+        return alert["lat"] if alert else None
 
     @property
     def longitude(self) -> float | None:
-        """Longitude of the device, while the fix is current."""
-        return self._gps.get("lng") if self._current else None
+        """Longitude: the current fix, else the newest alert position."""
+        if self._current:
+            return self._gps.get("lng")
+        alert = self._alert_position
+        return alert["lng"] if alert else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -81,4 +107,11 @@ class ProofDeviceTracker(ProofEntity, TrackerEntity):
         if not self._current:
             attrs["last_known_latitude"] = gps.get("lat")
             attrs["last_known_longitude"] = gps.get("lng")
+            alert = self._alert_position
+            attrs["location_source"] = "alert" if alert else None
+            if alert:
+                attrs["location_time"] = alert["time"].isoformat()
+                attrs["location_alert"] = alert["alert"]
+        else:
+            attrs["location_source"] = "gps"
         return attrs
