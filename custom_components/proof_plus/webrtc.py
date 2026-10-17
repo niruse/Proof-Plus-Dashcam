@@ -265,6 +265,18 @@ class ProofWebRTCClient:
                 )
             elif track.kind == "audio":
                 self._audio_track = track
+                # Always drain the audio. aiortc queues every decoded frame on the
+                # remote track without limit until someone calls recv(); with no
+                # browser listening (an NVR takes video only, the session now
+                # lingers between viewers) nothing did, and the queue grew by
+                # ~47 AudioFrames/s -- the Core OOM leak, caught with
+                # profiler.start_log_objects on 2026-10-17 (+1400 AudioFrame / 30 s,
+                # memory +1.2 %/min while a live session was open).
+                self._tasks.append(
+                    asyncio.ensure_future(
+                        self._drain(self._relay.subscribe(track, buffered=False))
+                    )
+                )
 
         # Control channel for device RPCs such as switching camera.
         self._data_channel = self._pc.createDataChannel("proof")
@@ -466,6 +478,16 @@ class ProofWebRTCClient:
                 await self._send([CMD_PING, 0, None])
         except asyncio.CancelledError:
             pass
+
+    async def _drain(self, track: Any) -> None:
+        """Read and drop frames so the source track's queue never grows."""
+        try:
+            while not self._closed:
+                await track.recv()
+        except asyncio.CancelledError:
+            pass
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Audio track ended for %s: %s", self._device_id, err)
 
     async def _consume(self, track: Any) -> None:
         try:
