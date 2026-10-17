@@ -285,6 +285,11 @@ class ProofWebRTCClient:
                 return
             # The device also pushes unsolicited reports, keyed by type.
             if (kind := reply.get("type")) :
+                if kind not in self.reports:
+                    # Which reports the dashcam pushes over a live session (looking for a
+                    # live position: the status GPS block has been frozen since 2026-10-09).
+                    _LOGGER.info("Proof %s pushes report %r: %s", self._device_id, kind,
+                                 json.dumps(reply.get("data"))[:400])
                 self.reports[kind] = reply.get("data")
                 if (event := self._report_waiters.pop(kind, None)) is not None:
                     event.set()
