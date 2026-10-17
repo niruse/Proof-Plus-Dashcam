@@ -90,6 +90,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # No live frame for this long while live means the session has stalled.
 STALL_SECONDS = 8
+# Keyframe requests on a live-but-silent connection before reconnecting.
+MAX_NUDGES = 3
 # A fresh session that has not produced a keyframe by then is restarted.
 FIRST_KEYFRAME_SECONDS = 30
 # The dashcam only sends a keyframe when asked. Ask this often while waiting
@@ -403,10 +405,27 @@ class ProofRtspFeed:
             tick = 0
             next_tick = loop.time()
 
+        nudges = 0
+
         async def restart(reason: str) -> None:
-            """Drop a session that delivers nothing; try again after a pause."""
+            """Get the picture going again -- without reconnecting if possible.
+
+            Every reconnect is announced out loud by the dashcam ("remote
+            connection disconnected / connected"). While the WebRTC connection
+            is still alive, ask for a keyframe on the same session instead; only a dead connection, or one that stayed
+            silent through MAX_NUDGES nudges, is closed and reopened.
+            """
+            nonlocal nudges
             _LOGGER.debug("RTSP %s %s: %s", device_id, self._name, reason)
             self.last_error = reason
+            client = session.client
+            if client is not None and client.alive and nudges < MAX_NUDGES:
+                nudges += 1
+                # (Not a camera re-select: the dashcam's select is a "next
+                # camera" toggle, so re-selecting would flip to the wrong one.)
+                await client.async_request_keyframe()
+                return
+            nudges = 0
             await session.async_restart()
             back_off()
 
@@ -527,6 +546,7 @@ class ProofRtspFeed:
                             self._profile = profile
                         if not self.live:
                             _LOGGER.debug("RTSP %s %s: live video", device_id, self._name)
+                            nudges = 0
                             self.live = True
                             self.last_error = None
                             failures = 0
