@@ -73,20 +73,30 @@ class ProofDeviceTracker(ProofEntity, TrackerEntity):
         return None
 
     @property
-    def latitude(self) -> float | None:
-        """Latitude: the current fix, else the newest alert position."""
+    def _position(self) -> tuple[float | None, float | None, str | None]:
+        """The newest position there is: an alert newer than the GPS fix wins.
+
+        Even a "current" fix can be old: while the dashcam sends no status
+        (2026-10-20, a whole drive) its fix and its report time both freeze, so
+        the fix still looks fresh while the ignition-off alert at the
+        destination already carries the new position. So whichever is newer
+        is used, not the GPS block first.
+        """
+        if alert := self._alert_position:
+            return alert["lat"], alert["lng"], "alert"
         if self._current:
-            return self._gps.get("lat")
-        alert = self._alert_position
-        return alert["lat"] if alert else None
+            return self._gps.get("lat"), self._gps.get("lng"), "gps"
+        return None, None, None
+
+    @property
+    def latitude(self) -> float | None:
+        """Latitude of the newest position (GPS fix or alert)."""
+        return self._position[0]
 
     @property
     def longitude(self) -> float | None:
-        """Longitude: the current fix, else the newest alert position."""
-        if self._current:
-            return self._gps.get("lng")
-        alert = self._alert_position
-        return alert["lng"] if alert else None
+        """Longitude of the newest position (GPS fix or alert)."""
+        return self._position[1]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -107,11 +117,10 @@ class ProofDeviceTracker(ProofEntity, TrackerEntity):
         if not self._current:
             attrs["last_known_latitude"] = gps.get("lat")
             attrs["last_known_longitude"] = gps.get("lng")
+        source = self._position[2]
+        attrs["location_source"] = source
+        if source == "alert":
             alert = self._alert_position
-            attrs["location_source"] = "alert" if alert else None
-            if alert:
-                attrs["location_time"] = alert["time"].isoformat()
-                attrs["location_alert"] = alert["alert"]
-        else:
-            attrs["location_source"] = "gps"
+            attrs["location_time"] = alert["time"].isoformat()
+            attrs["location_alert"] = alert["alert"]
         return attrs
