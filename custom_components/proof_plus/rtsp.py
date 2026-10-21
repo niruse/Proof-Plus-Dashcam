@@ -72,6 +72,7 @@ from .const import (
     RTSP_MODE_OFF,
     RTSP_MODE_TRIGGER,
 )
+from .coordinator import last_report
 from .messages import EVENT_MESSAGE
 from .mpegts import TSMuxer
 from .standby import (
@@ -106,6 +107,8 @@ MAX_LEAD = 90000
 MAX_LAG = 3 * 90000
 # Waits between attempts to reach a dashcam that would not answer.
 RETRY_BACKOFF = (15, 30, 60, 120, 300)
+# Silence longer than this, then a report: the dashcam was off the network.
+DROP_SECONDS = 60
 # How often to retry putting the dashcam on the feed's camera.
 RECLAIM_SECONDS = 1
 # Frames queued for the feed before newer ones are dropped.
@@ -429,10 +432,15 @@ class ProofRtspFeed:
             await session.async_restart()
             back_off()
 
+        last_kick = self._rtsp.kicked_at(device_id)
         try:
             units = await self._standby_units(wait=True) or []
             while self._readers:
                 now = loop.time()
+                if (kick := self._rtsp.kicked_at(device_id)) != last_kick:
+                    # The dashcam is back after a drop: reconnect now.
+                    last_kick = kick
+                    retry_at, failures = 0.0, 0
                 want = self._rtsp.want_live(device_id)
                 # With both cameras on the stream they take turns; a camera
                 # somebody is watching in Home Assistant keeps the turn.
@@ -753,6 +761,11 @@ class ProofRtsp:
         self._windows: dict[str, dict[str, float | None]] = {}
         self._ignition: dict[str, bool] = {}
         self._polled_ignition: dict[str, bool] = {}
+        # Auto-renew: when a dashcam reports again after a drop (or its ignition
+        # comes on), the feeds reconnect at once instead of sitting out their
+        # back-off, which reaches 5 min after a few failed attempts.
+        self._kicks: dict[str, float] = {}
+        self._reports: dict[str, float] = {}
         self._feeds: dict[tuple[str, int], ProofRtspFeed] = {}
         self._server: asyncio.Server | None = None
         self._go2rtc = ProofGo2rtc(hass, entry.entry_id)
@@ -1075,6 +1088,13 @@ class ProofRtsp:
                 return True
         return False
 
+    def kicked_at(self, device_id: str) -> float:
+        return self._kicks.get(device_id, 0.0)
+
+    @callback
+    def _kick(self, device_id: str) -> None:
+        self._kicks[device_id] = time.monotonic()
+
     @callback
     def _on_update(self) -> None:
         """Follow the ignition as polled, in case its alert was missed.
@@ -1085,6 +1105,13 @@ class ProofRtsp:
         alert with the stale "off" from before it.
         """
         for device_id, device in (self.coordinator.data or {}).items():
+            # Back after a drop: a report after more than a minute of silence.
+            report = last_report(device)
+            before = self._reports.get(device_id)
+            if report:
+                self._reports[device_id] = report
+                if before and report - before > DROP_SECONDS:
+                    self._kick(device_id)
             acc = (device.get("stats") or {}).get("acc")
             if acc is None or self._polled_ignition.get(device_id) == bool(acc):
                 continue
@@ -1095,6 +1122,8 @@ class ProofRtsp:
     def _set_ignition(self, device_id: str, on: bool) -> None:
         before = self._ignition.get(device_id)
         self._ignition[device_id] = on
+        if on and before is False:
+            self._kick(device_id)  # a new drive: no leftover back-off
         if not self._driving or before == on:
             return
         windows = self._windows.setdefault(device_id, {})
