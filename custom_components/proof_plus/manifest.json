@@ -16,7 +16,10 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/niruse/Proof-Plus-Dashcam/issues",
   "requirements": [
-    "aiortc==1.15.0"
+    "aioice>=0.10.2,<1.0.0",
+    "google-crc32c>=1.1",
+    "pyee>=13.0.0",
+    "pylibsrtp>=0.10.0"
   ],
-  "version": "1.1.0"
+  "version": "1.1.1"
 }
