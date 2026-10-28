@@ -9,7 +9,7 @@ from typing import Any
 
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import STORAGE_DIR, Store
@@ -170,6 +170,9 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.session_renew_result: str | None = None
         # Account-wide alert toggles (msgctrl); cheap to read, so polled.
         self.alerts: dict[str, bool] = {}
+        # device id -> (ignition, epoch seconds) last seen while the dashcam was
+        # online or from an ACC alert, held while it is offline (_hold_ignition).
+        self._acc_seen: dict[str, tuple[bool, float]] = {}
         # Last self-check result per dashcam.
         self.self_check: dict[str, dict[str, Any]] = {}
         # Last known storage figures per dashcam (megabytes).
@@ -479,6 +482,7 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             raise UpdateFailed("Proof returned no devices for this account")
 
         result = {dev["id"]: dev for dev in devices if "id" in dev}
+        self._hold_ignition(result)
         self._check_gps(result)
         await self._async_renew_session_early()
         await self._async_refresh_alerts()
@@ -486,6 +490,44 @@ class ProofCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             await self._async_refresh_events(result)
             self._attach_message_photos()
         return result
+
+    @callback
+    def _hold_ignition(self, devices: dict[str, dict[str, Any]]) -> None:
+        """Keep the ignition through a drop of the dashcam's connection.
+
+        While the dashcam is offline the cloud reports acc 0 (and speed 0)
+        even mid-drive, so a dashcam that lost its 4G link turned the ignition
+        off for the rest of the trip (seen for 50 minutes). Offline, the
+        ignition stays what it was last seen online, until an ACC alert says
+        otherwise (async_on_message).
+        """
+        now = time.time()
+        for device_id, dev in devices.items():
+            stats = dev.get("stats")
+            if not isinstance(stats, dict) or "acc" not in stats:
+                continue
+            if dev.get("online"):
+                self._acc_seen[device_id] = (bool(stats["acc"]), now)
+            elif device_id in self._acc_seen:
+                stats["acc"] = 1 if self._acc_seen[device_id][0] else 0
+
+    @callback
+    def async_on_message(self, event: Event) -> None:
+        """An ACC alert sets the ignition held while the dashcam is offline."""
+        if str(event.data.get("type") or "").lower() != "acc":
+            return
+        device_id = event.data.get("device_id")
+        when = dt_util.parse_datetime(str(event.data.get("time") or ""))
+        stamp = when.timestamp() if when else time.time()
+        seen = self._acc_seen.get(device_id)
+        if seen is not None and seen[1] >= stamp:
+            return  # an alert replayed at login, older than what was seen since
+        on = str(event.data.get("topic") or "").upper().endswith("ON")
+        self._acc_seen[device_id] = (on, stamp)
+        dev = (self.data or {}).get(device_id)
+        if dev and not dev.get("online") and isinstance(dev.get("stats"), dict):
+            dev["stats"]["acc"] = 1 if on else 0
+            self.async_update_listeners()
 
     @callback
     def _check_gps(self, devices: dict[str, dict[str, Any]]) -> None:
