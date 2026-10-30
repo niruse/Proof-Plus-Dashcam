@@ -50,6 +50,7 @@ from .coordinator import (
     async_clear_login_notice,
     async_notify_login_needed,
 )
+from .deps import async_ensure_aiortc
 from .messages import ProofMessageListener
 from .rtsp import ProofRtsp
 
@@ -156,6 +157,9 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Proof Plus from a config entry."""
+    # Live video needs aiortc, which Home Assistant cannot install itself.
+    if error := await async_ensure_aiortc(hass):
+        raise ConfigEntryNotReady(f"aiortc could not be installed: {error}")
 
     @callback
     def _store_tokens(tokens: dict[str, Any]) -> None:
