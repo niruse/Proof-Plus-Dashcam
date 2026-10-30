@@ -51,7 +51,7 @@ from .coordinator import (
     async_notify_login_needed,
 )
 from .deps import async_ensure_aiortc
-from .messages import ProofMessageListener
+from .messages import EVENT_MESSAGE, ProofMessageListener
 from .rtsp import ProofRtsp
 
 SERVICE_RTSP_TRIGGER = "rtsp_trigger"
@@ -199,6 +199,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(str(err)) from err
 
     coordinator = ProofCoordinator(hass, entry, client)
+    entry.async_on_unload(hass.bus.async_listen(EVENT_MESSAGE, coordinator.async_on_message))
     # Restore the dashcam settings read previously, so those controls work
     # straight away instead of waiting for the user to refresh them.
     await coordinator.async_load_stored_props()
